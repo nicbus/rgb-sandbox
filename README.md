@@ -95,7 +95,7 @@ Following the manual demo and rxecuting all the required steps is a rather long
 and error-prone process.
 
 To ease the task of following the steps, a recording of the manual demo
-execution is available at
+execution is available:
 [![demo](https://asciinema.org/a/553660.svg)](https://asciinema.org/a/553660?autoplay=1)
 
 ## Manual demo
