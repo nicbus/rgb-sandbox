@@ -2,22 +2,13 @@ RGB Sandbox
 ===
 
 ## Introduction
-This is an RGB sandbox and demo based on RGB version 0.9.x.
+This is an RGB sandbox and demo based on RGB version 0.10.
 It is based on the original rgb-node demo by [St333p] (version 0.1), [grunch]'s
 [guide] and previous rgb-node sandbox versions.
 
-Please note that later RGB versions (0.10) will contain braking changes and
-will be incompatible with this demo.
+The underlying Bitcoin network is `regtest`.
 
-It runs in Docker using Rust 1.67 on Debian bullseye. The underlying Bitcoin
-network is `regtest`.
-
-The used RGB components are:
-- [rgb-cli]
-- [rgb-node]
-- [rgb-std]
-- [rgb20]
-- [store_daemon]
+RGB is operated via the [rgb-contracts] crate.
 
 [BDK] is used for walleting.
 
@@ -38,34 +29,31 @@ allow following the links between the steps. Actual output when executing the
 procedure will be different each time.
 
 ## Setup
-Clone the repository:
+Clone the repository, including (shallow) submodules:
 ```sh
-git clone https://github.com/RGB-Tools/rgb-sandbox
+git clone https://github.com/RGB-Tools/rgb-sandbox --recurse-submodules --shallow-submodules
 ```
-
-The default setup assumes the user and group IDs are `1000`. If that's not the
-case, the `MYUID` and `MYGID` environment variables  in the
-`docker-compose.yml` file need to be updated accordingly.
 
 The automated demo does not require any other setup steps.
 
 The manual version requires handling of data directories and services, see the
 [dedicated section](#data-and-service-management) for instructions.
 
-Both versions will leave bdk-cli installed, in the `bdk-cli` directory under
-the project root. The directory can be safely removed to start from scratch,
-doing so will just require bdk-cli to be re-installed on the next run.
+Both versions will leave `bdk-cli` and `rgb-contracts` installed, in the
+respective directories under the project root. These directories can be safely
+removed to start from scratch, doing so will just require the rust crates to be
+re-installed on the next run.
 
 ### Requirements
 - [git]
 - [cargo]
 - [docker]
-- [docker-compose]
+- [docker compose]
 
 ## Sandbox exploration
 The services started with docker compose simulate a small network with a
-bitcoin node, an explorer and three RGB nodes. These can be used to test and
-explore the basic functionality of an RGB ecosystem.
+bitcoin node and an explorer. These can be used to support testing and
+exploring the basic functionality of an RGB ecosystem.
 
 Check out the manual demo below to get started with example commands. Refer to
 each command's help documentation for additional information.
@@ -76,26 +64,23 @@ To check out the automated demo, run:
 bash demo.sh
 ```
 
-The automated script will install `bdk-cli`, create empty service data
-directories, start the required services, create Bitcoin wallets, generate
-UTXOs, issue an asset, transfer some of it from the issuer to a first recipient
-(twice, the second time spending sender's change), then transfer from the first
-recipient to a second one and, finally, transfer all the assets received by the
-second recipient back to the issuer.
-On exit, the script will stop the services and remove the data directories.
+The automated script will install the required rust crates, create empty
+service data directories, start the required services, prepare the wallets,
+issue assets, execute a series of asset transfers, the stop the services and
+remove the data directories.
 
 For more verbose output during the automated demo, add the `-v` option (`bash
-demo.sh -v`), which shows the commands being run on nodes and additional
+demo.sh -v`), which shows the commands being run and additional
 information (including output from additional inspection commands).
 
-The script by default uses "OP_RETURN" as closing method and "wpkh"
-descriptors. "Tapret" closing method and taproot descriptors can be selected
-passing the `tapret1st` and `tr` arguments:
-```sh
-bash demo.sh "tapret1st" "tr"
-```
+The script by default uses `opret1st` as closing method. The `tapret1st`
+closing method can be selected via the `--tapret` command-line option (`bash
+demo.sh --tapret`).
 
 ## Manual demo recording
+
+Note: this has not yet been updated to the 0.10 version.
+
 Following the manual demo and executing all the required steps is a rather long
 and error-prone process.
 
@@ -104,8 +89,10 @@ execution is available:
 [![demo](https://asciinema.org/a/553660.svg)](https://asciinema.org/a/553660?autoplay=1)
 
 ## Manual demo
-The manual demo shows how to issue an asset and transfer some tokens to a
-recipient.
+
+Note: this has not yet been updated to the 0.10 version.
+
+The manual demo shows how to issue an asset and transfer some to a recipient.
 
 At the beginning of the demo, some shell command aliases and common variables
 need to be set, then a series of steps are briefly described and illustrated
@@ -124,62 +111,65 @@ replaced with the actual output received while following the demo.
 ### Data and service management
 Create data directories and start the required services in Docker containers:
 ```sh
-# create service data directories
+# create data directories
 mkdir data{0,1,2,core,index}
 
-# run containers (first time takes a while to download/build docker images...)
-docker-compose up -d
+# start services (first time docker images need to be downloaded...)
+docker compose up -d
 ```
 
 To get a list of the running services you can run:
 ```sh
-docker-compose ps
+docker compose ps
 ```
 
 To get their respective logs you can run, for instance:
 ```sh
-docker-compose logs rgb-node-0
+docker compose logs rgb-node-0
 ```
 
 Once finished and in order to clean up containers and data to start the demo
 from scratch, run:
 ```sh
-# stop and remove running containers
-docker-compose down
+# stop services and remove containers
+docker compose down
 
-# remove service data directories
+# remove data directories
 rm -fr data{0,1,2,core,index}
 ```
 
 ### Premise
-RGB-node does not handle wallet-related functionality, it just performs
-RGB-specific tasks over data that will be provided by an external wallet, such
-as BDK. In particular, in order to demonstrate a basic workflow with issuance
-and transfer, we will need:
-- an *outpoint_issue* to which `rgb-node-0` will allocate the new asset
-  issuance
-- an *outpoint_change* on which `rgb-node-0` will send the asset change
-- an *outpoint_receive* on which `rgb-node-1` will receive the asset transfer
+`rgb-contracts` does not handle wallet-related functionality, it performs
+RGB-specific tasks over data that is provided by an external wallet, such as
+BDK. In particular, in order to demonstrate a basic workflow with issuance and
+transfer, we will need:
+- an *outpoint_issue* to which the issuer will allocate the new asset
+- an *outpoint_receive* on which the recipient will receive the asset transfer
+- an *outpoint_change* on which the sender will send the asset change
 - a partially signed bitcoin transaction (PSBT) where a commitment to the
   transfer will be anchored
 
 ### bdk-cli installation
-RGB wallets will be handled with BDK. We install its CLI to the `bdk-cli`
-directory inside the demo's directory:
+Wallets will be handled with BDK. We install its CLI to the `bdk-cli` directory
+inside the project directory:
 ```sh
-cargo install bdk-cli --version "0.26.0" --root "./bdk-cli" --features electrum
+cargo install bdk-cli --version "0.27.1" --root "./bdk-cli" --features electrum
+```
+
+### rgb-contracts installation
+RGB functionality will be handled with `rgb-contracts`. We install its CLI to the `rgb-contracts` directory
+inside the project directory:
+```sh
+cargo install rgb-contracts --version "0.10.0-rc.3" --root "./rgb-contracts" --all-features
 ```
 
 ### Demo
 We setup aliases to ease calls to command-line interfaces:
 ```sh
-alias bcli='docker-compose exec -u blits bitcoind bitcoin-cli -regtest'
-alias bdk='bdk-cli/bin/bdk-cli'
-alias rgb0-rgb20='docker-compose exec -u rgb rgb-node-0 rgb20 -n regtest'
-alias rgb0-cli='docker-compose exec -u rgb rgb-node-0 rgb-cli -n regtest'
-alias rgb1-cli='docker-compose exec -u rgb rgb-node-1 rgb-cli -n regtest'
-alias rgb0-std='docker-compose exec -u rgb rgb-node-0 rgb'
-alias rgb1-std='docker-compose exec -u rgb rgb-node-1 rgb'
+alias bcli="docker compose exec -u blits bitcoind bitcoin-cli -regtest"
+alias bdk="bdk-cli/bin/bdk-cli"
+alias rgb0="rgb-contracts/bin/rgb -n regtest -d data0"
+alias rgb1="rgb-contracts/bin/rgb -n regtest -d data1"
 ```
 
 We set some environment variables:
@@ -557,8 +547,8 @@ data directory is sufficient:
 cp data{0,1}/$CONSIGNMENT
 ```
 
-In real-world scenarios, consignments are exchanged either via [Storm] or [RGB
-HTTP JSON-RPC] (e.g. using an [RGB proxy])
+In real-world scenarios, consignments are exchanged either via [RGB
+HTTP JSON-RPC] (e.g. using an [RGB proxy]) or [Storm].
 
 #### Receiver: validate transfer
 Before a transfer can be accepted, it needs to be validated:
@@ -687,13 +677,9 @@ receiver's allocation is not visible in the contract state on the sender side.
 [St333p]: https://github.com/St333p
 [Storm]: https://github.com/Storm-WG/storm-spec
 [cargo]: https://github.com/rust-lang/cargo
-[docker-compose]: https://docs.docker.com/compose/install/
+[docker compose]: https://docs.docker.com/compose/install/
 [docker]: https://docs.docker.com/get-docker/
 [git]: https://git-scm.com/downloads
 [grunch]: https://github.com/grunch
 [guide]: https://grunch.dev/blog/rgbnode-tutorial/
-[rgb-cli]: https://github.com/RGB-WG/rgb-node/tree/v0.8/cli
-[rgb-node]: https://github.com/RGB-WG/rgb-node
-[rgb-std]: https://github.com/RGB-WG/rgb-std
-[rgb20]: https://github.com/RGB-WG/rust-rgb20
-[store_daemon]: https://github.com/Storm-WG/storm-stored
+[rgb-contracts]: https://github.com/RGB-WG/rgb
