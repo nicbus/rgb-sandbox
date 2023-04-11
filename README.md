@@ -2,22 +2,13 @@ RGB Sandbox
 ===
 
 ## Introduction
-This is an RGB sandbox and demo based on RGB version 0.9.x.
+This is an RGB sandbox and demo based on RGB version 0.10.x.
 It is based on the original rgb-node demo by [St333p] (version 0.1), [grunch]'s
 [guide] and previous rgb-node sandbox versions.
 
-Please note that later RGB versions (0.10) will contain braking changes and
-will be incompatible with this demo.
+The underlying Bitcoin network is `regtest`.
 
-It runs in Docker using Rust 1.67 on Debian bullseye. The underlying Bitcoin
-network is `regtest`.
-
-The used RGB components are:
-- [rgb-cli]
-- [rgb-node]
-- [rgb-std]
-- [rgb20]
-- [store_daemon]
+RGB is operated via the [rgb-contracts] crate.
 
 [BDK] is used for walleting.
 
@@ -38,9 +29,9 @@ allow following the links between the steps. Actual output when executing the
 procedure will be different each time.
 
 ## Setup
-Clone the repository:
+Clone the repository, including (shallow) submodules:
 ```sh
-git clone https://github.com/RGB-Tools/rgb-sandbox
+git clone https://github.com/RGB-Tools/rgb-sandbox --recurse-submodules --shallow-submodules
 ```
 
 The default setup assumes the user and group IDs are `1000`. If that's not the
@@ -52,20 +43,21 @@ The automated demo does not require any other setup steps.
 The manual version requires handling of data directories and services, see the
 [dedicated section](#data-and-service-management) for instructions.
 
-Both versions will leave bdk-cli installed, in the `bdk-cli` directory under
-the project root. The directory can be safely removed to start from scratch,
-doing so will just require bdk-cli to be re-installed on the next run.
+Both versions will leave `bdk-cli` and `rgb-contracts` installed, in the
+respsective directories under the project root. The directories can be safely
+removed to start from scratch, doing so will just require the rust crates to be
+re-installed on the next run.
 
 ### Requirements
 - [git]
 - [cargo]
 - [docker]
-- [docker-compose]
+- [docker compose]
 
 ## Sandbox exploration
 The services started with docker compose simulate a small network with a
-bitcoin node, an explorer and three RGB nodes. These can be used to test and
-explore the basic functionality of an RGB ecosystem.
+bitcoin node and an explorer. These can be used to support testing and
+exploring the basic functionality of an RGB ecosystem.
 
 Check out the manual demo below to get started with example commands. Refer to
 each command's help documentation for additional information.
@@ -76,12 +68,13 @@ To check out the automated demo, run:
 bash demo.sh
 ```
 
-The automated script will install `bdk-cli`, create empty service data
-directories, start the required services, create Bitcoin wallets, generate
-UTXOs, issue an asset, transfer some of it from the issuer to a first recipient
-(twice, the second time spending sender's change), then transfer from the first
-recipient to a second one and, finally, transfer all the assets received by the
-second recipient back to the issuer.
+The automated script will install the required rust crates, create empty
+service data directories, start the required services, create Bitcoin wallets,
+generate UTXOs, issue an asset, transfer some of it from the issuer to a first
+recipient (twice, the second time spending sender's change), then transfer from
+the first recipient to a second one and, finally, transfer all the assets
+received by the second recipient back to the issuer.
+
 On exit, the script will stop the services and remove the data directories.
 
 For more verbose output during the automated demo, add the `-v` option (`bash
@@ -96,6 +89,9 @@ bash demo.sh "tapret1st" "tr"
 ```
 
 ## Manual demo recording
+
+Note: this has not yet been updated to the 0.10 version.
+
 Following the manual demo and executing all the required steps is a rather long
 and error-prone process.
 
@@ -104,6 +100,9 @@ execution is available:
 [![demo](https://asciinema.org/a/553660.svg)](https://asciinema.org/a/553660?autoplay=1)
 
 ## Manual demo
+
+Note: this has not yet been updated to the 0.10 version.
+
 The manual demo shows how to issue an asset and transfer some tokens to a
 recipient.
 
@@ -557,8 +556,8 @@ data directory is sufficient:
 cp data{0,1}/$CONSIGNMENT
 ```
 
-In real-world scenarios, consignments are exchanged either via [Storm] or [RGB
-HTTP JSON-RPC] (e.g. using an [RGB proxy])
+In real-world scenarios, consignments are exchanged either via [RGB
+HTTP JSON-RPC] (e.g. using an [RGB proxy]) or [Storm].
 
 #### Receiver: validate transfer
 Before a transfer can be accepted, it needs to be validated:
@@ -687,13 +686,9 @@ receiver's allocation is not visible in the contract state on the sender side.
 [St333p]: https://github.com/St333p
 [Storm]: https://github.com/Storm-WG/storm-spec
 [cargo]: https://github.com/rust-lang/cargo
-[docker-compose]: https://docs.docker.com/compose/install/
+[docker compose]: https://docs.docker.com/compose/install/
 [docker]: https://docs.docker.com/get-docker/
 [git]: https://git-scm.com/downloads
 [grunch]: https://github.com/grunch
 [guide]: https://grunch.dev/blog/rgbnode-tutorial/
-[rgb-cli]: https://github.com/RGB-WG/rgb-node/tree/v0.8/cli
-[rgb-node]: https://github.com/RGB-WG/rgb-node
-[rgb-std]: https://github.com/RGB-WG/rgb-std
-[rgb20]: https://github.com/RGB-WG/rust-rgb20
-[store_daemon]: https://github.com/Storm-WG/storm-stored
+[rgb-contracts]: https://github.com/RGB-WG/rgb
