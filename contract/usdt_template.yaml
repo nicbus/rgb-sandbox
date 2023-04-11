@@ -1,0 +1,16 @@
+interface: RGB20
+
+globals:
+  Nominal:
+    ticker: USDT
+    name: USD Tether
+    details: ~
+    precision: 0
+  ContractText: >
+    demo RGB20 asset
+
+assignments:
+  Assets:
+    seal: closing_method:txid:vout
+    amount: 2000
+
