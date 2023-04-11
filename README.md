@@ -2,22 +2,13 @@ RGB Sandbox
 ===
 
 ## Introduction
-This is an RGB sandbox and demo based on RGB version 0.9.x.
+This is an RGB sandbox and demo based on RGB version 0.10.
 It is based on the original rgb-node demo by [St333p] (version 0.1), [grunch]'s
 [guide] and previous rgb-node sandbox versions.
 
-Please note that later RGB versions (0.10) will contain braking changes and
-will be incompatible with this demo.
+The underlying Bitcoin network is `regtest`.
 
-It runs in Docker using Rust 1.67 on Debian bullseye. The underlying Bitcoin
-network is `regtest`.
-
-The used RGB components are:
-- [rgb-cli]
-- [rgb-node]
-- [rgb-std]
-- [rgb20]
-- [store_daemon]
+RGB is operated via the [rgb-contracts] crate.
 
 [BDK] is used for walleting.
 
@@ -38,9 +29,9 @@ allow following the links between the steps. Actual output when executing the
 procedure will be different each time.
 
 ## Setup
-Clone the repository:
+Clone the repository, including (shallow) submodules:
 ```sh
-git clone https://github.com/RGB-Tools/rgb-sandbox
+git clone https://github.com/RGB-Tools/rgb-sandbox --recurse-submodules --shallow-submodules
 ```
 
 The default setup assumes the user and group IDs are `1000`. If that's not the
@@ -52,20 +43,21 @@ The automated demo does not require any other setup steps.
 The manual version requires handling of data directories and services, see the
 [dedicated section](#data-and-service-management) for instructions.
 
-Both versions will leave bdk-cli installed, in the `bdk-cli` directory under
-the project root. The directory can be safely removed to start from scratch,
-doing so will just require bdk-cli to be re-installed on the next run.
+Both versions will leave `bdk-cli` and `rgb-contracts` installed, in the
+respective directories under the project root. These directories can be safely
+removed to start from scratch, doing so will just require the rust crates to be
+re-installed on the next run.
 
 ### Requirements
 - [git]
 - [cargo]
 - [docker]
-- [docker-compose]
+- [docker compose]
 
 ## Sandbox exploration
 The services started with docker compose simulate a small network with a
-bitcoin node, an explorer and three RGB nodes. These can be used to test and
-explore the basic functionality of an RGB ecosystem.
+bitcoin node and an explorer. These can be used to support testing and
+exploring the basic functionality of an RGB ecosystem.
 
 Check out the manual demo below to get started with example commands. Refer to
 each command's help documentation for additional information.
@@ -76,26 +68,19 @@ To check out the automated demo, run:
 bash demo.sh
 ```
 
-The automated script will install `bdk-cli`, create empty service data
-directories, start the required services, create Bitcoin wallets, generate
-UTXOs, issue an asset, transfer some of it from the issuer to a first recipient
-(twice, the second time spending sender's change), then transfer from the first
-recipient to a second one and, finally, transfer all the assets received by the
-second recipient back to the issuer.
-On exit, the script will stop the services and remove the data directories.
+The automated script will install the required rust crates, create empty
+service data directories, start the required services, prepare the wallets,
+issue assets, execute a series of asset transfers, the stop the services and
+remove the data directories.
 
 For more verbose output during the automated demo, add the `-v` option (`bash
-demo.sh -v`), which shows the commands being run on nodes and additional
+demo.sh -v`), which shows the commands being run and additional
 information (including output from additional inspection commands).
 
-The script by default uses "OP_RETURN" as closing method and "wpkh"
-descriptors. "Tapret" closing method and taproot descriptors can be selected
-passing the `tapret1st` and `tr` arguments:
-```sh
-bash demo.sh "tapret1st" "tr"
-```
-
 ## Manual demo recording
+
+Note: this has not yet been updated to the 0.10 version.
+
 Following the manual demo and executing all the required steps is a rather long
 and error-prone process.
 
@@ -104,8 +89,10 @@ execution is available:
 [![demo](https://asciinema.org/a/553660.svg)](https://asciinema.org/a/553660?autoplay=1)
 
 ## Manual demo
-The manual demo shows how to issue an asset and transfer some tokens to a
-recipient.
+
+Note: this has not yet been updated to the 0.10 version.
+
+The manual demo shows how to issue an asset and transfer some to a recipient.
 
 At the beginning of the demo, some shell command aliases and common variables
 need to be set, then a series of steps are briefly described and illustrated
@@ -124,79 +111,82 @@ replaced with the actual output received while following the demo.
 ### Data and service management
 Create data directories and start the required services in Docker containers:
 ```sh
-# create service data directories
-mkdir data{0,1,2,core,index}
+# create data directories
+mkdir data{0,1,core,index}
 
-# run containers (first time takes a while to download/build docker images...)
-docker-compose up -d
+# start services (first time docker images need to be downloaded...)
+docker compose up -d
 ```
 
 To get a list of the running services you can run:
 ```sh
-docker-compose ps
+docker compose ps
 ```
 
 To get their respective logs you can run, for instance:
 ```sh
-docker-compose logs rgb-node-0
+docker compose logs bitcoind
 ```
 
 Once finished and in order to clean up containers and data to start the demo
 from scratch, run:
 ```sh
-# stop and remove running containers
-docker-compose down
+# stop services and remove containers
+docker compose down
 
-# remove service data directories
-rm -fr data{0,1,2,core,index}
+# remove data directories
+rm -fr data{0,1,core,index}
 ```
 
 ### Premise
-RGB-node does not handle wallet-related functionality, it just performs
-RGB-specific tasks over data that will be provided by an external wallet, such
-as BDK. In particular, in order to demonstrate a basic workflow with issuance
-and transfer, we will need:
-- an *outpoint_issue* to which `rgb-node-0` will allocate the new asset
-  issuance
-- an *outpoint_change* on which `rgb-node-0` will send the asset change
-- an *outpoint_receive* on which `rgb-node-1` will receive the asset transfer
-- a partially signed bitcoin transaction (PSBT) where a commitment to the
-  transfer will be anchored
+The rgb-contracts CLI tool does not handle wallet-related functionality, it
+performs RGB-specific tasks over data that is provided by an external wallet,
+such as BDK. In particular, in order to demonstrate a basic workflow with
+issuance and transfer, from the bitcoin wallets we will need:
+- an *outpoint_issue* to which the issuer will allocate the new asset
+- an *outpoint_receive* where the recipient will receive the asset transfer
+- an RGB *invoice* that will be generated using the *outpoint_receive*
+- an *addr_change* where the sender will receive the bitcoin and asset change
+- a partially signed bitcoin transaction (PSBT) that rgb-contracts will modify
+  to anchor a commitment to the transfer
 
 ### bdk-cli installation
-RGB wallets will be handled with BDK. We install its CLI to the `bdk-cli`
-directory inside the demo's directory:
+Wallets will be handled with BDK. We install its CLI to the `bdk-cli` directory
+inside the project directory:
 ```sh
-cargo install bdk-cli --version "0.26.0" --root "./bdk-cli" --features electrum
+cargo install bdk-cli --version "0.27.1" --root "./bdk-cli" --features electrum
+```
+
+### rgb-contracts installation
+RGB functionality will be handled with `rgb-contracts`. We install its CLI to
+the `rgb-contracts` directory inside the project directory:
+```sh
+cargo install rgb-contracts --version "0.10.0-rc.3" --root "./rgb-contracts" --all-features
 ```
 
 ### Demo
-We setup aliases to ease calls to command-line interfaces:
+#### Initial setup
+We setup aliases to ease CLI calls:
 ```sh
-alias bcli='docker-compose exec -u blits bitcoind bitcoin-cli -regtest'
-alias bdk='bdk-cli/bin/bdk-cli'
-alias rgb0-rgb20='docker-compose exec -u rgb rgb-node-0 rgb20 -n regtest'
-alias rgb0-cli='docker-compose exec -u rgb rgb-node-0 rgb-cli -n regtest'
-alias rgb1-cli='docker-compose exec -u rgb rgb-node-1 rgb-cli -n regtest'
-alias rgb0-std='docker-compose exec -u rgb rgb-node-0 rgb'
-alias rgb1-std='docker-compose exec -u rgb rgb-node-1 rgb'
+alias bcli="docker compose exec -u blits bitcoind bitcoin-cli -regtest"
+alias bdk="bdk-cli/bin/bdk-cli"
+alias rgb0="rgb-contracts/bin/rgb -n regtest -d data0"
+alias rgb1="rgb-contracts/bin/rgb -n regtest -d data1"
 ```
 
 We set some environment variables:
 ```sh
 CLOSING_METHOD="opret1st"
-DERIVE_PATH="m/86'/1'/0'/0"
+DERIVE_PATH="m/86'/1'/0'/9"
 DESC_TYPE="wpkh"
 ELECTRUM="localhost:50001"
 ELECTRUM_DOCKER="electrs:50001"
-CONSIGNMENT="consignment.rgbc"
+CONSIGNMENT="consignment.rgb"
 PSBT="tx.psbt"
-TRANSITION="transition.rgbt"
+IFACE="RGB20"
 ```
-Note: to use "tapret" instead of "OP_RETURN", set `CLOSING_METHOD` to `tapret1st`
-and `DESC_TYPE` to `tr`.
 
-We prepare the wallets using Bitcoin Core and BDK:
+We prepare the Bitcoin wallets using Bitcoin Core and BDK:
 ```sh
 # Bitcoin Core wallet
 bcli createwallet miner
@@ -209,70 +199,77 @@ rm -fr ~/.bdk-bitcoin/{issuer,receiver}
 bdk key generate
 # example output:
 # {
-#   "fingerprint": "afa06284",
-#   "mnemonic": "craft kick idle universe diary vehicle poverty gospel yard process cannon old glide good immune anchor measure clerk spare access teach glad turkey loud",
-#   "xprv": "tprv8ZgxMBicQKsPf432U5UZM5BoUsRzMXd6NG2gNnmWvkVK17a5s8BNbgD5Hi9ReiRfz7Zy6qdtZr99SHnXtAJKpr9ZY2HxiL5H2Ayz4b7J7zw"
+#   "fingerprint": "b51b4256",
+#   "mnemonic": "human viable shoot chief argue crime initial kingdom country cool current search company sorry little memory picture illegal daring payment coral auction girl brief",
+#   "xprv": "tprv8ZgxMBicQKsPdLooHXXyjcgK3BYKzfhycADzy1M7CmJiMPCoNZm23mhMMCJnzM5qLK52vtjS1NBKWS64AND2TmHRQdwWPfW7vPkiAoiozZS"
 # }
+
 xprv_0="tprv8Zgx..."
 
-bdk key derive -p $DERIVE_PATH -x "$xprv_0"
+bdk key derive -p "$DERIVE_PATH" -x "$xprv_0"
 # example output:
 # {
-#   "xprv": "[afa06284/86'/1'/0'/0]tprv8iDEmpUvczBeUoSf51E7EU6DS4oyWsYogoh7gncmdbk6MYcHT36cSSTs8KfoJSckFfrThWAK7cPYETDRh2JN2DZHdZdPQgjxEFdjHo4a8SP/*",
-#   "xpub": "[afa06284/86'/1'/0'/0]tpubDEuGvEXAmMsKNGUSxethdskL16KugCjiG7HtyJf53sYVC2s45RvCcw5jJUoa5pRwCET4WjRUCp5gXog9Nsiis8xRQBQ5XFS1RUzGRY26WLc/*"
+#   "xprv": "[b51b4256/86'/1'/0'/9]tprv8j1dcDJVdU55xPP9hgR2fsHBJA2fSNzcrh7ZJL73SAoGWwFmjaZBc4DW6EwRcBvLKqFp64Dapsa8mh5DVgvUXjvXudFpA5Xc9dz4RmboCFf/*",
+#   "xpub": "[b51b4256/86'/1'/0'/9]tpubDFhfkdLjmqkkqrQwbL5d5GwHsBYbbiBXRziLar9LrSbfMRWYMyNmnYqNGQ5EQRZM6B8hxUtBQiVXqbTbKGf4ZyHcyVhkdycSYdWPzZY8Z8Y/*"
 # }
-xprv_der_0="[afa06284/86'/1'/0'/0]tprv8iDE...",
-xpub_der_0="[afa06284/86'/1'/0'/0]tpubDEuG..."
+
+xprv_der_0="[b51b4256/86'/1'/0'/9]tprv8j1d..."
+xpub_der_0="[b51b4256/86'/1'/0'/9]tpubDFhf..."
 
 # receiver BDK wallet
 bdk key generate
 # example output:
 # {
-#   "fingerprint": "9a7b1bf5",
-#   "mnemonic": "dad must child immense minor oyster slam usage marine stable fancy infant frame violin coach boat raven quit goose sure sunset ranch today regret",
-#   "xprv": "tprv8ZgxMBicQKsPfMrcJc4pkx4wzobd2YJd7q1rYeeMnBJqM3REDbSvj683nAFTQqwQZKSeT6fwuU6ke7bg6hTjCusjdms4S8wojbCWuKKccfF"
+#   "fingerprint": "14eaf7ad",
+#   "mnemonic": "obscure enforce east van family romance fashion disagree field lake hazard asset surge cigar north turn before lake team range effort choice mercy violin",
+#   "xprv": "tprv8ZgxMBicQKsPegjdKUmwDcFhFnkmnZ8tiJLsJXqy87rymVzJMC6u3SvC9t4C1dEpybRkVoqqmpBrmEYTk3hg2nW7ftH3AuDsvp9Mw2tsw1D"
 # }
+
 xprv_1="tprv8Zgx..."
 
-bdk key derive -p $DERIVE_PATH -x "$xprv_1"
+bdk key derive -p "$DERIVE_PATH" -x "$xprv_1"
 # example output:
 # {
-#   "xprv": "[9a7b1bf5/86'/1'/0'/0]tprv8iChT3XXpryQSXMEdTHyVkjerUVDsJ43ovDDRVmHgiiZEiqBMqWLegjDqGxoDrHE1CuNTsMBygMF1P6yubifzUx9sFNAWdKAoDxY8eE6Q4Q/*",
-#   "xpub": "[9a7b1bf5/86'/1'/0'/0]tpubDEtjbTZmyEf5KzP2X6xZuAPmRW1A2dExPDozi1ob6zWx5D5wzEKvqBM61PEfVDqZsNPxveUQe5pozi5qV2kgapDfJqrpKdrK9BQoUTW2poB/*"
+#   "xprv": "[14eaf7ad/86'/1'/0'/9]tprv8iJE5PPQbmPkdKguvdRhKVG2KvV4eL2He6hMrDPCHA7kp6truUoGqkFS1FFYKHFAUEEREvuXuqQkrw7s8xzK61rDPnE8cUjqZKYsspLxFm1/*",
+#   "xpub": "[14eaf7ad/86'/1'/0'/9]tpubDEzGDoRek95RWnihpH6Hitv8twzzofDCDQJ98jRVhRv9eb9dXscs2EsJBNa3UsZ4JvWhWUFAwFSmfKUsUboM5qDpgPRCXgP2MwRbgAyATcK/*"
 # }
-xprv_der_1="[9a7b1bf5/86'/1'/0'/0]tprv8iChT3XX...",
-xpub_der_1="[9a7b1bf5/86'/1'/0'/0]tpubDEtjbTZm..."
 
-# fund RGB wallets
+xprv_der_1="[14eaf7ad/86'/1'/0'/9]tprv8iJE..."
+xpub_der_1="[14eaf7ad/86'/1'/0'/9]tpubDEzG..."
+
+# generate addresses
 bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" get_new_address
 # example output:
 # {
-#   "address": "bcrt1qsylsdz0kqqnac7ev5s26s5hlg7ws8hhlm4227q"
+#   "address": "bcrt1qcusj4weuh2kdlwrz2jn3sua3ctvfw84q305wpl"
 # }
-addr_issue="bcrt1qsy..."
+
+addr_issue="bcrt1qcu..."
 
 bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" get_new_address
 # example output:
-# {
-#   "address": "bcrt1qu0lcz4qttluznfhrt89agwq7zy46ge0kyr38u8"
-# }
-addr_change="bcrt1qu0..."
+{
+  "address": "bcrt1q5mgt7tll7e8j9fr93l6wryex8drstvasz0wz4q"
+}
+
+addr_change="bcrt1q5m..."
 
 bdk -n regtest wallet -w receiver -d "$DESC_TYPE($xpub_der_1)" get_new_address
 # example output:
 # {
-#   "address": "bcrt1qzf7396x7q4kfh496y0jemh5m32qqefv3h3j6al"
+#   "address": "bcrt1qfg4kdxhzzny099rsw9sye3se3yh8g4lsmnqwg8"
 # }
-addr_receive="bcrt1qzf..."
 
-bcli -rpcwallet=miner sendtoaddress $addr_issue 2
-bcli -rpcwallet=miner sendtoaddress $addr_change 2
-bcli -rpcwallet=miner sendtoaddress $addr_receive 2
+addr_receive="bcrt1qfg..."
+
+# fund wallets
+bcli -rpcwallet=miner sendtoaddress "$addr_issue" 1
+bcli -rpcwallet=miner sendtoaddress "$addr_receive" 1
 bcli -rpcwallet=miner -generate 1
 
 # sync wallets
-bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" -s $ELECTRUM sync
-bdk -n regtest wallet -w receiver -d "$DESC_TYPE($xpub_der_1)" -s $ELECTRUM sync
+bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" -s "$ELECTRUM" sync
+bdk -n regtest wallet -w receiver -d "$DESC_TYPE($xpub_der_1)" -s "$ELECTRUM" sync
 
 # list wallet unspents to gather the outpoints
 bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" list_unspent
@@ -281,22 +278,15 @@ bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" list_unspent
 #   {
 #     "is_spent": false,
 #     "keychain": "External",
-#     "outpoint": "bf08fd8fd48aa7e1f53185124e0d2f0082c057c6c638f03bea92527e5be3e8cd:1",
+#     "outpoint": "3d19c1c9eaee04708eac80c821da2609ad5307e2d8310340e18323f1b7657e45:1",
 #     "txout": {
-#       "script_pubkey": "0014813f0689f60027dc7b2ca415a852ff479d03deff",
-#       "value": 200000000
-#     }
-#   },
-#   {
-#     "is_spent": false,
-#     "keychain": "External",
-#     "outpoint": "d67e0e08728603e2d8ad077bb1f14b28316e2f6597c277962d2813327a95ed2f:1",
-#     "txout": {
-#       "script_pubkey": "0014e3ff81540b5ff829a6e359cbd4381e112ba465f6",
-#       "value": 200000000
+#       "script_pubkey": "0014c7212abb3cbaacdfb86254a71873b1c2d8971ea0",
+#       "value": 100000000
 #     }
 #   }
 # ]
+
+outpoint_issue="3d1...e45:1"
 
 bdk -n regtest wallet -w receiver -d "$DESC_TYPE($xpub_der_1)" list_unspent
 # example output:
@@ -304,396 +294,275 @@ bdk -n regtest wallet -w receiver -d "$DESC_TYPE($xpub_der_1)" list_unspent
 #   {
 #     "is_spent": false,
 #     "keychain": "External",
-#     "outpoint": "b2dc02697554c9db147895b41f5e55e07730b8211c2147d35f1152a38582807d:0",
+#     "outpoint": "4be91b2b43b36ca2b430e415b7b7ec219d84262d10bddfc4e89577b2e47f6f19:1",
 #     "txout": {
-#       "script_pubkey": "0014127d12e8de056c9bd4ba23e59dde9b8a800ca591",
-#       "value": 200000000
+#       "script_pubkey": "00144a2b669ae214c8f2947071604cc619892e7457f0",
+#       "value": 100000000
 #     }
 #   }
 # ]
+
+outpoint_receive="4be...f19:1"
 ```
 
-From the above we get the following outpoints:
+We setup the RGB clients, importing schema and interface implementation:
 ```sh
-outpoint_issue="bf08fd8f..."
-outpoint_change="d67e0e08..."
-outpoint_receive="b2dc0269..."
+# 1st client
+rgb0 import rgb-schemata/schemata/NonInflatableAssets.rgb
+# example output:
+# Stock file not found, creating default stock
+# Wallet file not found, creating new wallet list
+# Schema urn:lnp-bp:sc:BEiLYE-am9WhTW1-oK8cpvw4-FEMtzMrf-mKocuGZn-qWK6YF#ginger-parking-nirvana imported to the stash
+
+rgb0 import rgb-schemata/schemata/NonInflatableAssets-RGB20.rgb
+# example output:
+# Implementation urn:lnp-bp:im:9EUGHCwpuiyrQENdPBVyivVX4sVRBs9yKfteugHtqnGb#titanic-easy-citizen of interface urn:lnp-bp:if:48hc4im9JRcYQAuUSzwFCKVNEa9eZfnhepU8QJpqosXS#laptop-domingo-cool for schema urn:lnp-bp:sc:BEiLYE-am9WhTW1-oK8cpvw4-FEMtzMrf-mKocuGZn-qWK6YF#ginger-parking-nirvana imported to the stash
+
+# 2nd client (same output as 1st client)
+rgb1 import rgb-schemata/schemata/NonInflatableAssets.rgb
+rgb1 import rgb-schemata/schemata/NonInflatableAssets-RGB20.rgb
+```
+
+We retrieve the schema ID and set it as environment variable:
+```sh
+rgb0 schemata
+# example output:
+# urn:lnp-bp:sc:BEiLYE-am9WhTW1-oK8cpvw4-FEMtzMrf-mKocuGZn-qWK6YF#ginger-parking-nirvana RGB20
+
+schema="urn:lnp-bp:sc:BEiLYE-am...ing-nirvana"
 ```
 
 #### Asset issuance
-To issue an asset, run:
+To issue an asset, we first need to prepare a contract definition file, then
+use it to actually carry out the issuance.
+
+To prepare the contract file, we copy the provided template and modify the copy
+to set the required data:
+- issued supply
+- created timestamp
+- closing method
+- issuance txid and vout
+
+We do this with the following command:
 ```sh
-rgb0-rgb20 issue -m $CLOSING_METHOD USDT "USD Tether" 1000@$outpoint_issue
+sed \
+  -e "s/issued_supply/1000/" \
+  -e "s/created_timestamp/$(date +%s)/" \
+  -e "s/closing_method/$CLOSING_METHOD/" \
+  -e "s/txid:vout/$outpoint_issue/" \
+  contracts/usdt.yaml.template > contracts/usdt.yaml
+```
+
+To actually issue the asset, run:
+```sh
+rgb0 issue "$schema" "$IFACE" contracts/usdt.yaml
 # example output:
-# Contract ID: rgb1znn5xh7g33u4cseg27uz5mzma58rr98tlpfxp75l0e783my8hx0qcx0jsj
-#
-# Contract YAML:
-# schema_id: rgbsh18kp34t5nn5zu4hz6g7lqjdjskw8aaf84ecdntrtrdvzs7gn3rnzskscfq8
-# chain: !regtest: 0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206
-# metadata:
-#   0:
-#   - !AsciiString: USDT
-#   1:
-#   - !AsciiString: USD Tether
-#   3:
-#   - !U8: 8
-#   4:
-#   - !I64: 1673358389
-#   160:
-#   - !U64: 1000
-# owned_rights:
-#   161: !value
-#   - !revealed:
-#     seal:
-#       method: OpretFirst
-#       txid: bf08fd8fd48aa7e1f53185124e0d2f0082c057c6c638f03bea92527e5be3e8cd
-#       vout: 1
-#       blinding: 15804704581054809064
-#     state:
-#       value: 1000
-#       blinding: "0000000000000000000000000000000000000000000000000000000000000001"
-# public_rights: []
-#
-# Contract JSON:
-# {"schema_id":"rgbsh18kp34t5nn5zu4hz6g7lqjdjskw8aaf84ecdntrtrdvzs7gn3rnzskscfq8","chain":{"regtest":"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"},"metadata":{"0":[{"AsciiString":"USDT"}],"1":[{"AsciiString":"USD Tether"}],"3":[{"U8":8}],"4":[{"I64":1673358389}],"160":[{"U64":1000}]},"owned_rights":{"161":{"value":[{"revealed":{"seal":{"method":"OpretFirst","txid":"bf08fd8fd48aa7e1f53185124e0d2f0082c057c6c638f03bea92527e5be3e8cd","vout":1,"blinding":15804704581054809064},"state":{"value":1000,"blinding":"0000000000000000000000000000000000000000000000000000000000000001"}}}]}},"public_rights":[]}
-#
-# Contract source:
-# rgbc1qxz4yjeg03g33llwadhlu84erc4eg62kk2g5fukcypmgs2epc2vfs6xyr3jjtyvjj2ctpgtx2r983rnycky9pz54z4ft9xfgkxvgmc36muul0r55htnhvlh80dl7wl8hqltykpqm6sxfrkn7k7rcsgyqpndtpwut8fx9zqzsa42twct562tcqg9p9nfemc4ryrkjpmxj3j04ysg6qc9r2jf7pflt44cpq2v2dvx6ucnnr9qel23ryvqdgrtl6rxhnyz4wrzrtega0u2y8776y2ser60zml02vfdqzl92mxrelw3wlhvuntczhveudzwq45qu8dave2cvx09m43pfqe0wr92s85vng7h63zk36y4ywdz7v4nvy29sz8lrmrgqjwklemq0j782wmwd9u5e0a7d24rl7zm27anpu43r6l5ln57wtcjazvvswynvqghuwduz4y7ju2dzadunm0947kjztxnn23td08vej97pswf00jwecsvpsar4zwtewlyy7eh68zsg53ea8vlpx8rskr536d9qv54xjhrcx35ra3jkac4y5scrgmc8a8mldw8pxxp9fvrvfn4h9j4uetg9qhapuxj9uc63k34ja5hrrfzq4qgddxfe9hmharzf5wr098xpnswfctn8c9t7dgv6nxmm9elzk0pldu7paquusn4wfzwuer3a44xdejnjmpp0pz0ead9x9c6dexweze9l3tt7qvka6hgx
-contract_id="rgb1znn5..."
-contract_source="rgbc1qxz..."
-```
-This will create a new genesis that includes asset metadata and the allocation
-of the initial amount to the `outpoint_issue`.
+# A new contract rgb:pueJTZ5-PA8DEMsVc-Bzv2PSgvZ-v7ANCbnRT-3wXADdPdx-vqXhvF is issued and added to the stash.
+# Use `export` command to export the contract.
 
-Register the newly created contract with rgb-node:
-```sh
-rgb0-cli contract register $contract_source
+contract_id="rgb:AbX...pfW-yVdYUA"
 ```
+This will create a new genesis that includes the asset metadata and the
+allocation of the initial amount to the `outpoint_issue`.
 
-You can list known fungible assets:
+You can list known contracts:
 ```sh
-rgb0-cli contract list
+rgb0 contracts
 ```
 
 You can show the current known state for the contract:
 ```sh
-rgb0-cli contract state $contract_id
-# example output:
-# Querying state of rgb1znn5xh7g33u4cseg27uz5mzma58rr98tlpfxp75l0e783my8hx0qcx0jsj...
-# schema_id: rgbsh18kp34t5nn5zu4hz6g7lqjdjskw8aaf84ecdntrtrdvzs7gn3rnzskscfq8
-# root_schema_id: null
-# contract_id: rgb1znn5xh7g33u4cseg27uz5mzma58rr98tlpfxp75l0e783my8hx0qcx0jsj
-# metadata:
-#   9eb987ec787c7e9ffa6052f8eb94310eed5b6c2ab85728435c798cc85f43e714:
-#     0:
-#     - USDT
-#     1:
-#     - USD Tether
-#     3:
-#     - '8'
-#     4:
-#     - '1673358389'
-#     160:
-#     - '1000'
-# owned_rights: []
-# owned_values:
-# - 1000#0000000000000000000000000000000000000000000000000000000000000001@bf08fd8fd48aa7e1f53185124e0d2f0082c057c6c638f03bea92527e5be3e8cd:1
-# owned_data: []
-# owned_attachments: []
+rgb0 state "$contract_id" "$IFACE"
 ```
 
 #### Transfer
 
-#### Receiver: generate blinded UTXO
-In order to receive some assets, `rgb-node-1` needs to provide `rgb-node-0`
-with a `blinded_utxo`. To do so we blind the `outpoint_receive`:
+##### Receiver: generate invoice
+In order to receive assets, the receiver needs to provide an invoice to the
+sender. The receiver generates an invoice providing the amount to be received
+(here `100`) and the outpoint where the assets should be allocated:
 ```sh
-rgb1-std blind -m $CLOSING_METHOD $outpoint_receive
+rgb1 invoice "$contract_id" "$IFACE" 100 "$CLOSING_METHOD:$outpoint_receive"
 # example output:
-# txob10xwkaqrqsyn7gv6guz8myfxzlh9dha6f6yfgjdf0nwaspvrk9ghss5npr8
-# Blinding factor: 571637893965646
-blinded_utxo="txob10xw..."
-blinding_factor="57163789..."
-```
-This also gives us the `blinding_factor` that will be needed later on, in order
-to accept the transfer related to this outpoint.
+# rgb:8Kdfa1Hkn4iXXstH3sCgUoF8YG9eeActB4CUmPmrfnW6/RGB20/100+utxob:rFNYJaK-AeZ7cqZ3q-EBS6bbs5P-wtPe1UR62-iEanYS7oK-yJyptk
 
-#### Sender: initiate asset transfer
-To send some assets to a `blinded_utxo`, `rgb-node-0` needs to create a
-consignment and commit to it into a bitcoin transaction. So we will need a
-partially signed bitcoin transaction that we will modify to include the
+invoice="rgb:8Kd...nW6/RGB20/100+utxob:rFN...ptk"
+```
+Note: this will blind the give outpoint and the invoice will contain a blinded
+UTXO in place of the original outpoint (see the `utxob:` part of the invoice).
+
+##### Sender: initiate asset transfer
+To send assets, the sender needs to create a consignment and commit to it into
+a bitcoin transaction. We need to create a PSBT and then modify to include the
 commitment.
 
-Generate a new address for the bitcoin (non-asset) portion of the transaction:
-```sh
-bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" get_new_address
-# example output:
-# {
-#   "address": "tb1q53xthr0wc7x6s8kemzzdwl0stk66tkdrdld8ac"
-# }
-addr_change="tb1q53xt..."
-```
-
-Create the initial PSBT, specifying the `outpoint_issue` as input and the
-freshly generated `addr_change` address as output, then write it to a file and
-make it available to `rgb-node-0`:
+We create the PSBT, using `outpoint_issue` as input, `addr_change` for both the
+RGB and BTC change:
 ```sh
 bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" create_tx \
-  --enable_rbf --send_all -f 5 --utxos $outpoint_issue --to $addr_change:0
+  -f 5 --send_all --utxos "$outpoint_issue" --to "$addr_change:0" \
+  --add_string opret
 # example output:
 # {
 #   "details": {
 #     "confirmation_time": null,
-#     "fee": 550,
-#     "received": 199999450,
-#     "sent": 200000000,
+#     "fee": 630,
+#     "received": 99999370,
+#     "sent": 100000000,
 #     "transaction": null,
-#     "txid": "f947289e0736a6938d87428d30c81a00a661d83e5155a25d999585e2728097a4"
+#     "txid": "a5e76d98fa478df5fc49cefd6cd76a4fc054e0b68c05f2f354d42e69dca8250d"
 #   },
-#   "psbt": "cHNidP8BAFIBAAAAAc3o41t+UpLqO/A4xsZXwIIALw1OEoUx9eGnitSP/Qi/AQAAAAD9////Adq/6wsAAAAAFgAUpEy7je7Hjage2diE133wXbWl2aNpAAAAAAEA3gIAAAAAAQGidTUaFjDK9wgFBj6zYZm7t5Jdlakw3EnmU0eNsTDLPgAAAAAA/v///wL8JBoeAQAAABYAFOoMGDGc+P0anr4szrq8JS95HFe7AMLrCwAAAAAWABSBPwaJ9gAn3HsspBWoUv9HnQPe/wJHMEQCIADfi5GJ321H2aY7AOndk4QWzmvxO5ZFjih2wISMWTYUAiAIerdX0VIDXKQvUZS9DdTREn+XIl3hV96FbCw3C3nFEgEhA2Vm3vOJZoCxv0hEJi+8FFSGUL3eIaqo+kIvT6niczrRZwAAAAEBHwDC6wsAAAAAFgAUgT8GifYAJ9x7LKQVqFL/R50D3v8iBgOSTtLuaFetpfJt6+GgeoBPKk+KNXqeCKbi7Eb+X7dwTRivoGKEVgAAgAEAAIAAAACAAAAAAAEAAAAAIgICfHFDbv+YAW1oNvNJlqB54CrDEa6rFwrKOr1irWg+eS4Yr6BihFYAAIABAACAAAAAgAAAAAADAAAAAA=="
+#   "psbt": "cHNidP8BAGIBAAAAAUV+ZbfxI4PhQAMx2OIHU60JJtohyICsjnAE7urJwRk9AQAAAAD+////Aore9QUAAAAAFgAU8EYjxPkRxp7/IJ2G10cWuG6A4HYAAAAAAAAAAAdqBW9wcmV0aAAAAAABAN4CAAAAAAEBzY6/2OJDebRovPnxc6QBXQ/J/YRwKUYNYvYCMITuhOEAAAAAAP3///8C/AUQJAEAAAAWABRgbl32dLQ8x0BmTsae//hsWpra7QDh9QUAAAAAFgAUxyEquzy6rN+4YlSnGHOxwtiXHqACRzBEAiA9ZtRoxwKbwhlnjG/1alBD9S8Qq9Uga7VmFqorP3xLLQIgTCqx45odK/168XHD+6M6BYaV4wBe14s/opU1sDxnaP0BIQIKoXNhdryTuE5CNI8wyhwGM9nw6sWr3g8pn2p6sSzM9GcAAAABAR8A4fUFAAAAABYAFMchKrs8uqzfuGJUpxhzscLYlx6gIgYCjkwSayO2j7fPTJDtuTrHrfBcsCD73kIMPRu/BqRX3mcYtRtCVlYAAIABAACAAAAAgAkAAAAAAAAAACICAo00rXRVDgqaJlSwAKUlEe41HoTwVfYV0mvsXGtaPHWhGLUbQlZWAACAAQAAgAAAAIAJAAAAAQAAAAAA"
 # }
-echo "cHNidP8B..." | base64 -d > $PSBT
 
-cp $PSBT data0/
+echo "cHNidP8B..." | base64 -d > "data0/$PSBT"
 ```
 
-Initiate the transfer by creating the consignment and state transition files
-(required data: contract ID, outpoint to be spent and for the change, blinded
-UTXO, names for consignment and transition files, send and change amounts and
-closing method):
+We then modify the PSBT to set the commitment host:
 ```sh
-# build the draft consignment for the transfer
-rgb0-cli transfer compose $contract_id $outpoint_issue $CONSIGNMENT
-# example output:
-# Composing consignment for state transfer for contract rgb1znn5xh7g33u4cseg27uz5mzma58rr98tlpfxp75l0e783my8hx0qcx0jsj...
-# Task forwarded to bucket daemon
-# Saving consignment to consignment_compose.rgbc
-# Success
-
-# validate the generated consignment
-rgb0-std consignment validate $CONSIGNMENT $ELECTRUM_DOCKER
-# example output:
-# unresolved_txids: []
-# unmined_endpoint_txids: []
-# failures: []
-# warnings: []
-# info: []
-
-# inspect the generated consignment (debug output)
-rgb0-std consignment inspect -f debug $CONSIGNMENT
-
-# prepare the state transition for the transfer
-rgb0-rgb20 transfer --utxo $outpoint_issue \
-  --change 900@$CLOSING_METHOD:$outpoint_change \
-  $CONSIGNMENT 100@$blinded_utxo $TRANSITION
-# example output:
-# ---
-# transition_type: 0
-# metadata: {}
-# parent_owned_rights:
-#   9eb987ec787c7e9ffa6052f8eb94310eed5b6c2ab85728435c798cc85f43e714:
-#     161:
-#     - 0
-# owned_rights:
-#   161: !value
-#   - !revealed:
-#     seal:
-#       method: OpretFirst
-#       txid: d67e0e08728603e2d8ad077bb1f14b28316e2f6597c277962d2813327a95ed2f
-#       vout: 1
-#       blinding: 1888680781681793083
-#     state:
-#       value: 900
-#       blinding: 7262cf789dbf09dd40f8f5571b106fbdaab825a3e45b043d9e8340cb8179008b
-#   - !confidential_seal:
-#     seal: txob10xwkaqrqsyn7gv6guz8myfxzlh9dha6f6yfgjdf0nwaspvrk9ghss5npr8
-#     state:
-#       value: 100
-#       blinding: 8d9d30876240f622bf070aa8e4ef90410ff6b742caed9bfe214f1dc14ebd40b7
-# parent_public_rights: {}
-# public_rights: []
-#
-# Success
+rgb0 set-host --method "$CLOSING_METHOD" "data0/$PSBT"
+# PSBT file 'data0/tx.psbt' is updated with opret1st host now set.
 ```
 
-Embed contract information into the PSBT:
+We generate the consignment, providing the PSBT and the invoice:
 ```sh
-rgb0-cli contract embed $contract_id $PSBT
+rgb0 transfer --method "$CLOSING_METHOD" "data0/$PSBT" "$invoice" "data0/$CONSIGNMENT"
 # example output:
-# Embedding rgb1znn5xh7g33u4cseg27uz5mzma58rr98tlpfxp75l0e783my8hx0qcx0jsj into PSBT...
-# Task forwarded to bucket daemon
+# Transfer is created and saved into 'data0/consignment.rgb'.
+# PSBT file 'data0/tx.psbt' is updated with all required commitments and ready to be signed.
+# Stash data are updated.
 ```
 
-Add state transition information to the PSBT:
+The consignment can be inspected, but since the output is very long it's best
+output to a file:
 ```sh
-rgb0-cli transfer combine $contract_id $TRANSITION $PSBT $outpoint_issue
-# example output:
-# Preparing PSBT for the state transfer...
-# Task forwarded to bucket daemon
+rgb0 inspect "data0/$CONSIGNMENT" > consignment.inspect
 ```
+To view the result, open the `consignment.inspect` file with a text editor.
 
-Finalize RGB bundle information in the PSBT:
-```sh
-rgb0-std psbt bundle -m $CLOSING_METHOD $PSBT
-# example output:
-# Total 1 bundles converted
-
-# analyze the resulting (final) PSBT
-rgb0-std psbt analyze $PSBT
-```
-
-Finalize the consignment:
-```sh
-rgb0-cli transfer finalize --endseal $blinded_utxo $PSBT $CONSIGNMENT
-# example output:
-# Finalizing state transfer...
-# Task forwarded to bucket daemon
-```
-
-#### Consignment exchange
+##### Consignment exchange
 For the purpose of this demo, copying the file over to the receiving node's
 data directory is sufficient:
 ```sh
-cp data{0,1}/$CONSIGNMENT
+cp data{0,1}/"$CONSIGNMENT"
 ```
 
-In real-world scenarios, consignments are exchanged either via [Storm] or [RGB
-HTTP JSON-RPC] (e.g. using an [RGB proxy])
+In real-world scenarios, consignments are exchanged either via [RGB HTTP
+JSON-RPC] (e.g. using an [RGB proxy]) or other consignment exchange services.
 
-#### Receiver: validate transfer
-Before a transfer can be accepted, it needs to be validated:
+##### Receiver: validate transfer
+Before a transfer can be safely accepted, it needs to be validated:
 ```sh
-rgb1-std consignment validate $CONSIGNMENT $ELECTRUM_DOCKER
+rgb1 validate "data1/$CONSIGNMENT"
 # example output:
-# unresolved_txids: []
-# unmined_endpoint_txids:
-# - 001216558680ea34af86cf7f50631ccfde05c0f3eb0007af442849f736a3aa3e
-# failures: []
-# warnings:
-# - !EndpointTransactionMissed 001216558680ea34af86cf7f50631ccfde05c0f3eb0007af442849f736a3aa3e
-# info: []
+# Consignment has non-mined terminal(s)
+# Non-mined terminals:
+# - 14c6c910acc08299d5411525751971d8764e5285187353e31acb09097c351f42
+# Validation warnings:
+# - terminal witness transaction 14c6c910acc08299d5411525751971d8764e5285187353e31acb09097c351f42 is not yet mined.
 ```
 
-The transfer is valid if no `failures` are reported. It is normal at this stage
-for a transaction to show up in the `unresolved_txids` list, as that's the
-transaction that has not yet been broadcast, as the sender is waiting for
-approval from the recipient.
+At this point it's normal that validation reports a warning about the witness
+transaction not been mined, as the sender has not broadcast it yet. In a real-world scenario, the sender is waiting for approval from the receiver.
 
-At this point the recipient approves the transfer (for the demo let's just
-assume it happened, in a real-world scenario an [RGB proxy] can be used).
+Now that validation passed, the receiver can approve the transfer. For this
+demo let's just assume it happened, in a real-world scenario an [RGB proxy] can
+be used.
 
-#### Sender: sign and broadcast transaction
+##### Sender: sign and broadcast transaction
 With the receiver's approval of the transfer, the transaction can be signed and
 broadcast:
 ```sh
 bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xprv_der_0)" \
-    sign --psbt $(base64 -w0 data0/$PSBT)
+  sign --psbt $(base64 -w0 "data0/$PSBT")
 # example output:
 # {
 #   "is_finalized": true,
-#   "psbt": "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"
+#   "psbt": "cHNidP8BAH0BAAAAAUV+ZbfxI4PhQAMx2OIHU60JJtohyICsjnAE7urJwRk9AQAAAAD+////Aore9QUAAAAAFgAU8EYjxPkRxp7/IJ2G10cWuG6A4HYAAAAAAAAAACJqIPh1EJ54dEo/JX6K1pBozNwoAGaZR/voD9IRKHY6cSZyaAAAACb8A1JHQgGmhAHot8GqPrQq47n22SAAw6M24EXfpswPkK19FLHvV9YAAGzHuGQSrYE7Ev1xiZ8m4QipkglyvdTA2Vc1TOPGQ+vrECcAAAABbMe4ZBKtgTsS/XGJnybhCKmSCXK91MDZVzVM48ZD6+ugDwAAAAGgDwECAAMAAAAAAADaxFqeahDI7AiEAwAAAAAAAApsTppDR7hz/W3m48n18IPPi35EibFqc1raj0L1qwhvAm/St5+wlcX1eUb9tGbkn4GBOYS2vL2VyeoF9SfNS43ECGQAAAAAAAAAzvkoW1GuVoZZR5hp8nzezD31hXfs/YjE+Fn9BBx1Gv0AAAEA3gIAAAAAAQHNjr/Y4kN5tGi8+fFzpAFdD8n9hHApRg1i9gIwhO6E4QAAAAAA/f///wL8BRAkAQAAABYAFGBuXfZ0tDzHQGZOxp7/+GxamtrtAOH1BQAAAAAWABTHISq7PLqs37hiVKcYc7HC2JceoAJHMEQCID1m1GjHApvCGWeMb/VqUEP1LxCr1SBrtWYWqis/fEstAiBMKrHjmh0r/XrxccP7ozoFhpXjAF7Xiz+ilTWwPGdo/QEhAgqhc2F2vJO4TkI0jzDKHAYz2fDqxaveDymfanqxLMz0ZwAAAAEBHwDh9QUAAAAAFgAUxyEquzy6rN+4YlSnGHOxwtiXHqAiBgKOTBJrI7aPt89MkO25Oset8FywIPveQgw9G78GpFfeZxi1G0JWVgAAgAEAAIAAAACACQAAAAAAAAABBwABCGsCRzBEAiB3xA4eZ39rbRwZJ/EJXxhKlEFWSmoCMPW1uH9jaKP+lAIgUNazN8IA8Mli0UKTmsOsqmv1/m3MTjnbxQeeX+fni2wBIQKOTBJrI7aPt89MkO25Oset8FywIPveQgw9G78GpFfeZyb8A1JHQgNsx7hkEq2BOxL9cYmfJuEIqZIJcr3UwNlXNUzjxkPr6yCmhAHot8GqPrQq47n22SAAw6M24EXfpswPkK19FLHvVwAiAgKNNK10VQ4KmiZUsAClJRHuNR6E8FX2FdJr7FxrWjx1oRi1G0JWVgAAgAEAAIAAAACACQAAAAEAAAAAKfwGTE5QQlA0AGzHuGQSrYE7Ev1xiZ8m4QipkglyvdTA2Vc1TOPGQ+vrIBWtKLR9ET2WzLWuPZXpU0HTgh/1XbJv4qdKAFTZ6WuQCfwGTE5QQlA0AQi2Xx0RbbVYGgj8BU9QUkVUAAAI/AVPUFJFVAEg+HUQnnh0Sj8lforWkGjM3CgAZplH++gP0hEodjpxJnIA"
 # }
+
 psbt_signed="cHNidP8B..."
 
-bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" -s $ELECTRUM \
+bdk -n regtest wallet -w issuer -d "$DESC_TYPE($xpub_der_0)" -s "$ELECTRUM" \
     broadcast --psbt "$psbt_signed"
 # example output:
 # {
-#   "txid": "001216558680ea34af86cf7f50631ccfde05c0f3eb0007af442849f736a3aa3e"
+#   "txid": "14c6c910acc08299d5411525751971d8764e5285187353e31acb09097c351f42"
 # }
+```
 
-# confirm the transaction
+##### Transaction confirmation
+Now the transaction has been broadcast, let's confirm it:
+```sh
 bcli -rpcwallet=miner -generate 1
 ```
 
-#### Receiver: consume transfer
-Once the transaction has been confirmed it's time to accept the incoming
-transfer.
-
-Let's first validate the transfer again and confirm the transaction ID doesn't
-show up as unmined anymore:
+##### Receiver: accept transfer
+Once the transaction has been confirmed, to complete the transfer and see the
+new allocation in the contract state, the receiver needs to accept the
+transfer:
 ```sh
-rgb1-std consignment validate $CONSIGNMENT $ELECTRUM_DOCKER
+rgb1 accept "data1/$CONSIGNMENT"
 # example output:
-# unresolved_txids: []
-# unmined_endpoint_txids: []
-# failures: []
-# warnings: []
-# info: []
+# Consignment is valid
+#
+# Transfer accepted into the stash
+```
+Note that accepting a transfer first validates its consignment.
+
+Let's see the contract state from the receiver point of view:
+```sh
+rgb1 state "$contract_id" "$IFACE"
+# example output:
+# Global:
+#   spec := (naming=(ticker=("USDT"), name=("USD Tether"), details=~), precision=0)
+#   data := (terms=("demo RGB20 asset"), media=~)
+#   issuedSupply := (1000)
+#   created := (1690379039)
+#
+# Owned:
+#   assetOwner:
+#     amount=1000, utxo=3d19c1c9eaee04708eac80c821da2609ad5307e2d8310340e18323f1b7657e45:1, witness=~ # owner unknown
+#     amount=900, utxo=14c6c910acc08299d5411525751971d8764e5285187353e31acb09097c351f42:0, witness=14c6c910acc08299d5411525751971d8764e5285187353e31acb09097c351f42 # owner unknown
+#     amount=100, utxo=4be91b2b43b36ca2b430e415b7b7ec219d84262d10bddfc4e89577b2e47f6f19:1, witness=14c6c910acc08299d5411525751971d8764e5285187353e31acb09097c351f42 # owner unknown
+```
+The original issuance the transfer allocations can be seen. The receiver can
+recognize its allocation from the `utxo`, which corresponds to the
+`outpoint_receive` provided when generating the invoice.
+
+##### Sender: accept transfer
+The sender doesn't need to explicitly accept the transfer, as it's automatically
+been accepted when creating it.
+
+The contract state already reflects the updates situation:
+```sh
+rgb0 state "$contract_id" "$IFACE"
+# example output:
+# Global:
+#   spec := (naming=(ticker=("USDT"), name=("USD Tether"), details=~), precision=0)
+#   data := (terms=("demo RGB20 asset"), media=~)
+#   issuedSupply := (1000)
+#   created := (1690379039)
+#
+# Owned:
+#   assetOwner:
+#     amount=1000, utxo=3d19c1c9eaee04708eac80c821da2609ad5307e2d8310340e18323f1b7657e45:1, witness=~ # owner unknown
+#     amount=900, utxo=14c6c910acc08299d5411525751971d8764e5285187353e31acb09097c351f42:0, witness=14c6c910acc08299d5411525751971d8764e5285187353e31acb09097c351f42 # owner unknown
 ```
 
-To complete the transfer and see the new allocation in the contract state, the
-receiver needs to consume the consignment, using the `outpoint_receive` and the
-corresponding `blinding_factor` generated during UTXO blinding:
-```sh
-rgb1-cli transfer consume $CONSIGNMENT \
-    --reveal "$CLOSING_METHOD@$outpoint_receive#$blinding_factor"
-# example output:
-# Verifying and consuming state transfer...
-# A new bucket daemon instance is started
-# Success: contract is valid and imported
-
-rgb1-cli contract state $contract_id
-# example output:
-# Querying state of rgb1znn5xh7g33u4cseg27uz5mzma58rr98tlpfxp75l0e783my8hx0qcx0jsj...
-# ...
-# owned_rights: []
-# owned_values:
-# - 900#7262cf789dbf09dd40f8f5571b106fbdaab825a3e45b043d9e8340cb8179008b@d67e0e08728603e2d8ad077bb1f14b28316e2f6597c277962d2813327a95ed2f:1
-# - 100#8d9d30876240f622bf070aa8e4ef90410ff6b742caed9bfe214f1dc14ebd40b7@b2dc02697554c9db147895b41f5e55e07730b8211c2147d35f1152a38582807d:0
-# owned_data: []
-# owned_attachments: []
-```
-
-##### Sender: consume transfer
-The contract state (`rgb0-cli contract state $contract_id`) on the sender side
-still shows the issuance allocation. To have the RGB node see the new change
-allocation the transfer needs to be consumed:
-```sh
-rgb0-cli contract state $contract_id
-# example output:
-# Querying state of rgb1znn5xh7g33u4cseg27uz5mzma58rr98tlpfxp75l0e783my8hx0qcx0jsj...
-# ...
-# owned_rights: []
-# owned_values:
-# - 1000#0000000000000000000000000000000000000000000000000000000000000001@bf08fd8fd48aa7e1f53185124e0d2f0082c057c6c638f03bea92527e5be3e8cd:1
-# owned_data: []
-# owned_attachments: []
-
-rgb0-cli transfer consume $CONSIGNMENT
-# example output:
-# Verifying and consuming state transfer...
-# Task forwarded to bucket daemon
-# Success: contract is valid and imported
-
-rgb0-cli contract state $contract_id
-# example output:
-# Querying state of rgb1znn5xh7g33u4cseg27uz5mzma58rr98tlpfxp75l0e783my8hx0qcx0jsj...
-# ...
-# owned_rights: []
-# owned_values:
-# - 900#7262cf789dbf09dd40f8f5571b106fbdaab825a3e45b043d9e8340cb8179008b@d67e0e08728603e2d8ad077bb1f14b28316e2f6597c277962d2813327a95ed2f:1
-# owned_data: []
-# owned_attachments: []
-```
-
-Since the `outpoint_receive` was blinded during the transfer, the payer has
-no information on where the asset was allocated after the transfer, so the
+Since the `outpoint_receive` was blinded during invoice generation, the payer
+has no information on where the asset was allocated by the transfer, so the
 receiver's allocation is not visible in the contract state on the sender side.
+
 
 [BDK]: https://github.com/bitcoindevkit/bdk-cli
 [RGB HTTP JSON-RPC]: https://github.com/RGB-Tools/rgb-http-json-rpc
 [RGB proxy]: https://github.com/grunch/rgb-proxy-server
 [St333p]: https://github.com/St333p
-[Storm]: https://github.com/Storm-WG/storm-spec
 [cargo]: https://github.com/rust-lang/cargo
-[docker-compose]: https://docs.docker.com/compose/install/
+[docker compose]: https://docs.docker.com/compose/install/
 [docker]: https://docs.docker.com/get-docker/
 [git]: https://git-scm.com/downloads
 [grunch]: https://github.com/grunch
 [guide]: https://grunch.dev/blog/rgbnode-tutorial/
-[rgb-cli]: https://github.com/RGB-WG/rgb-node/tree/v0.8/cli
-[rgb-node]: https://github.com/RGB-WG/rgb-node
-[rgb-std]: https://github.com/RGB-WG/rgb-std
-[rgb20]: https://github.com/RGB-WG/rust-rgb20
-[store_daemon]: https://github.com/Storm-WG/storm-stored
+[rgb-contracts]: https://github.com/RGB-WG/rgb
