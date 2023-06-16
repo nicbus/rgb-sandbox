@@ -540,10 +540,10 @@ _tit "transferring asset from issuer to recipient 1 (spending change)"
 transfer_asset issuer rcpt1 0 1 "$txid_change" "$vout_change" 2 200 1700 1900 100
 
 _tit "transferring asset from recipient 1 to recipient 2 (spend received)"
-transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 3 250 50 300 0
+transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 3 150 150 300 0
 
 _tit "transferring asset from recipient 2 to issuer"
-transfer_asset rcpt2 issuer 2 0 "$txid_rcpt" "$vout_rcpt" 4 100 150 250 1700
+transfer_asset rcpt2 issuer 2 0 "$txid_rcpt" "$vout_rcpt" 4 100 50 150 1700
 
 _tit "transferring asset from issuer to recipient 1 (spend received back)"
-transfer_asset issuer rcpt2 0 2 "$txid_rcpt" "$vout_rcpt" 5 1750 50 1800 50
+transfer_asset issuer rcpt2 0 2 "$txid_rcpt" "$vout_rcpt" 5 50 1750 1800 50
