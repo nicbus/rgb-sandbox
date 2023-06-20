@@ -284,8 +284,9 @@ transfer_asset() {
     local amt_change="$9"       # asset amount to get back as change
     local blnc_send="${10}"     # expected sender starting balance
     local blnc_rcpt="${11}"     # expected recipient starting balance
-    local txid_send_2="${12}"   # sender txid n. 2
-    local vout_send_2="${13}"   # sender vout n. 2
+    local witness="${12}"       # 0 for blinded UTXO, witness UTXO otherwise
+    local txid_send_2="${13}"   # sender txid n. 2
+    local vout_send_2="${14}"   # sender vout n. 2
 
     ## data variables for sender and recipient
     local rcpt_data send_data
@@ -311,18 +312,28 @@ transfer_asset() {
     blnc_rcpt=$((blnc_rcpt+amt_send))
     _log "expected final sender balance: $blnc_send"
     _log "expected final recipient balance: $blnc_rcpt"
+    [ "$blnc_send" = "$amt_change" ] || \
+        _die "expected final sender balance ($blnc_send) differs from the provided one ($amt_change)"
 
-    ## generate utxo to receive assets
+    ## generate invoice
+    # generate UTXO
     _subtit "preparing receiver UTXO"
     gen_utxo "$rcpt_wlt"
     txid_rcpt=$txid
     vout_rcpt=$vout
-
-    ## generate invoice
+    # generate invoice
     _subtit "generating invoice for transfer n. $num"
     local invoice
     invoice="$(_trace "${RGB[@]}" -d "data${rcpt_id}" invoice \
         "$CONTRACT_ID" $IFACE "$amt_send" "$CLOSING_METHOD:$txid_rcpt:$vout_rcpt")"
+    # replace invoice blinded UTXO with an address if witness UTXO is selected
+    if [ "$witness" != 0 ]; then
+        # generate address
+        gen_addr_bdk "$rcpt_wlt"
+        local addr_rcpt=$ADDR
+        invoice="${invoice%+*}"         # drop +<blinded>
+        invoice="${invoice}+$addr_rcpt" # add +<address>
+    fi
     _log "invoice: $invoice"
 
     ## generate addresses to receive asset change and tx btc output
@@ -352,10 +363,27 @@ transfer_asset() {
     for utxo in "${utxos[@]}"; do
         inputs+=("--utxos" "$utxo")
     done
+    local psbt_to=(--send_all --to "$addr_send:0")
+    if [ "$witness" != 0 ]; then
+        # get unspent amount from input UTXOs + compute change amt
+        local input_amt utxo_amt change_amt rcpt_amt fees
+        fees=1000
+        input_amt=0
+        for utxo in "${utxos[@]}"; do
+            local amt_filter=".[] |select(.outpoint == \"$utxo\") |.txout |.value"
+            utxo_amt=$(list_unspent "$send_wlt" | jq -r "$amt_filter")
+            input_amt=$((input_amt+utxo_amt))
+        done
+        rcpt_amt=5000
+        change_amt=$((input_amt-rcpt_amt-fees))
+        _log "input amount: $input_amt"
+        # set outputs to change with computed amount + rcpt
+        psbt_to=(--to "$addr_send:$change_amt" --to "$addr_rcpt:$rcpt_amt")
+    fi
     [ "$CLOSING_METHOD" = "opret1st" ] && opret=("--add_string" "opret")
     _trace $BDKI -n $NETWORK wallet -w "$send_wlt" \
-        -d "${DESC_TYPE}(${!der_xpub_var})" create_tx --enable_rbf --send_all \
-        -f 5 "${inputs[@]}" --to "$addr_send:0" "${opret[@]}" \
+        -d "${DESC_TYPE}(${!der_xpub_var})" create_tx --enable_rbf \
+        -f 5 "${inputs[@]}" "${psbt_to[@]}" "${opret[@]}" \
             | jq -r '.psbt' | base64 -d >"$send_data/$psbt"
 
     ## set opret/tapret host
@@ -380,7 +408,8 @@ transfer_asset() {
         echo "$decoded_psbt" | jq
     fi
     txid_change="$(echo "$decoded_psbt" | jq -r '.tx |.txid')"
-    vout_change="$(echo "$decoded_psbt" | jq -r '.tx |.vout |.[] |select(.value != 0) |.n')"
+    # select vout which is not OP_RETURN (0) nor witness UTXO (rcpt_amt)
+    vout_change="$(echo "$decoded_psbt" | jq -r '.tx |.vout |.[] |select(.value > 0.001) |.n')"
     _log "change outpoint: $txid_change:$vout_change"
 
     ## inspect consignment (when in debug mode)
@@ -519,31 +548,26 @@ import_asset 1
 
 
 ## transfer loop: issuer -> rcpt 1 -> issuer -> rcpt 2
-#_tit "transferring asset from issuer to recipient 1"
-#transfer_asset issuer rcpt1 0 1 "$txid_issue" "$vout_issue" 1 2000 0 2000 0
+## + change spending + witness UTXO transfer
+#_tit "transferring asset from issuer to recipient 1 (spend issuance)"
+#transfer_asset issuer rcpt1 0 1 "$txid_issue" "$vout_issue" 1 100 1900 2000 0 0
 #
-#_tit "transferring asset from recipient 1 back to issuer"
-#transfer_asset rcpt1 issuer 1 0 "$txid_rcpt" "$vout_rcpt" 2 2000 0 2000 0
+#_tit "transferring asset from issuer to recipient 1 (spending change)"
+#transfer_asset issuer rcpt1 0 1 "$txid_change" "$vout_change" 2 200 1700 1900 100 0
 #
-#_tit "transferring asset from issuer to recipient 2 (2nd send for issuer)"
-#transfer_asset issuer rcpt2 0 2 "$txid_rcpt" "$vout_rcpt" 3 2000 0 2000 0
+#_tit "transferring asset from recipient 1 to recipient 2 (spend received)"
+#transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 3 150 150 300 0 0
 #
-#_tit "transferring asset from recipient 2 to issuer (spend output of previous transfer)"
-#transfer_asset rcpt2 issuer 2 0 "$txid_rcpt" "$vout_rcpt" 4 2000 0 2000 0
+#_tit "transferring asset from recipient 2 to issuer"
+#transfer_asset rcpt2 issuer 2 0 "$txid_rcpt" "$vout_rcpt" 4 100 50 150 1700 0
+#
+#_tit "transferring asset from issuer to recipient 1 (spend received back)"
+#transfer_asset issuer rcpt1 0 1 "$txid_rcpt" "$vout_rcpt" 5 50 1750 1800 150 0
+#
+#_tit "transferring asset from recipient 1 to recipient 2 (spend with witness UTXO)"
+#transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 6 40 160 200 50 1
 
 
-## transfer loop with change spending
+## transfer with witness UTXO
 _tit "transferring asset from issuer to recipient 1 (spend issuance)"
-transfer_asset issuer rcpt1 0 1 "$txid_issue" "$vout_issue" 1 100 1900 2000 0
-
-_tit "transferring asset from issuer to recipient 1 (spending change)"
-transfer_asset issuer rcpt1 0 1 "$txid_change" "$vout_change" 2 200 1700 1900 100
-
-_tit "transferring asset from recipient 1 to recipient 2 (spend received)"
-transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 3 150 150 300 0
-
-_tit "transferring asset from recipient 2 to issuer"
-transfer_asset rcpt2 issuer 2 0 "$txid_rcpt" "$vout_rcpt" 4 100 50 150 1700
-
-_tit "transferring asset from issuer to recipient 1 (spend received back)"
-transfer_asset issuer rcpt2 0 2 "$txid_rcpt" "$vout_rcpt" 5 50 1750 1800 50
+transfer_asset issuer rcpt1 0 1 "$txid_issue" "$vout_issue" 1 100 1900 2000 0 1
