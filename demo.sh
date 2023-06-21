@@ -114,7 +114,7 @@ install_rgb_crates() {
 
 cleanup() {
     docker compose down
-    rm -rf data{0,1,2,core,index}
+    #rm -rf data{0,1,2,core,index}
 }
 
 setup_rgb_clients() {
