@@ -69,7 +69,7 @@ set_aliases() {
 }
 
 check_tools() {
-    local required_tools="base64 cargo cut docker grep head jq"
+    local required_tools="base64 cargo cut docker grep head jq ss"
     for tool in $required_tools; do
         if ! which "$tool" >/dev/null; then
             _die "could not find reruired tool \"$tool\", please install it and try again"
@@ -132,6 +132,10 @@ setup_rgb_clients() {
 
 start_services() {
     docker compose down
+    # see docker-compose.yml for the exposed ports
+    if [ -n "$(ss -HOlnt 'sport = :50001')" ];then
+        _die "port 50001 is already bound, electrs service can't start"
+    fi
     docker compose up -d
 }
 
