@@ -225,14 +225,15 @@ issue_asset() {
     txid_issue=$txid
     vout_issue=$vout
     _subtit 'issuing asset'
-    #cp $CONTRACT_TMPL $CONTRACT_YAML
-    #sed -i \
-    #    -e "s/closing_method/$CLOSING_METHOD/" \
-    #    -e "s/txid/$txid_issue/" \
-    #    -e "s/vout/$vout_issue/" \
-    #    $CONTRACT_YAML
-    #_trace "${RGB[@]}" -d $DATA0 issue "$SCHEMA" $IFACE contract/usdt.yaml
-    _trace "${RGB[@]}" -d $DATA0 issue "$txid_issue:$vout_issue"
+    cp $CONTRACT_TMPL $CONTRACT_YAML
+    sed -i \
+        -e "s/issued_supply/2000/" \
+        -e "s/created_timestamp/$(date +%s)/" \
+        -e "s/closing_method/$CLOSING_METHOD/" \
+        -e "s/txid/$txid_issue/" \
+        -e "s/vout/$vout_issue/" \
+        $CONTRACT_YAML
+    _trace "${RGB[@]}" -d $DATA0 issue "$SCHEMA" $IFACE contract/usdt.yaml
     CONTRACT_ID="$(_trace "${RGB[@]}" -d $DATA0 contracts | head -1)"
     _log "contract ID: $CONTRACT_ID"
     _log "contract state after issuance"
