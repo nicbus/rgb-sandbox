@@ -125,7 +125,7 @@ setup_rgb_clients() {
     done
     SCHEMA="$(_trace "${RGB[@]}" -d ${data}${num} schemata | awk '{print $1}')"
     _log "schema: $SCHEMA"
-    _trace "${RGB[@]}" -d ${data}${num} interfaces
+    [ "$DEBUG" != 0 ] && _trace "${RGB[@]}" -d ${data}${num} interfaces
 }
 
 start_services() {
@@ -154,9 +154,9 @@ prepare_wallets() {
         local xprv_var="xprv_$wallet"
         local der_xprv_var="der_xprv_$wallet"
         local der_xpub_var="der_xpub_$wallet"
-        _log "xprv: ${!xprv_var}"
-        _log "der_xprv: ${!der_xprv_var}"
-        _log "der_xpub: ${!der_xpub_var}"
+        echo "xprv: ${!xprv_var}"
+        echo "der_xprv: ${!der_xprv_var}"
+        echo "der_xpub: ${!der_xpub_var}"
     done
 }
 
@@ -274,16 +274,19 @@ check_balance() {
     id="$2"
     expected="$3"
     contract_name="$4"
+    _subtit "checking \"$contract_name\" balance for $wallet"
     contract_id="CONTRACT_ID_$contract_name"
     contract_id="${!contract_id}"
     mapfile -t outpoints < <(_trace list_unspent "$wallet" | jq -r '.[] |.outpoint')
     balance=0
     if [ "${#outpoints[@]}" -gt 0 ]; then
-        _log "outpoints: ${outpoints[*]}"
+        _log "outpoints:"
+        # shellcheck disable=2001
+        echo -n "    " && echo "${outpoints[*]}" | sed 's/ /\n    /g'
         local allocations amount
         allocations=$(_trace "${RGB[@]}" -d "data${id}" state "$contract_id" $IFACE \
             | grep 'amount=' | awk -F',' '{print $1" "$2}')
-        _log "wallet $wallet allocations:"
+        _log "allocations:"
         echo "$allocations"
         for utxo in "${outpoints[@]}"; do
             amount=$(echo "$allocations" \
@@ -292,8 +295,13 @@ check_balance() {
         done
     fi
     if [ "$balance" != "$expected" ]; then
-        _die "balance ($balance) differs from expected ($expected)"
+        _die "$(printf '%s' \
+            "balance \"$balance\" for contract \"$contract_id\" " \
+            "($contract_name) differs from the expected \"$expected\"")"
     fi
+    _log "$(printf '%s' \
+        "balance \"$balance\" for contract \"$contract_id\" " \
+        "($contract_name) matches the expected one")"
 }
 
 transfer_asset() {
@@ -558,9 +566,10 @@ trap cleanup EXIT
 _tit "starting services"
 check_dirs
 start_services
-setup_rgb_clients
 
 # wallet setup
+_tit "preparing RGB clients"
+setup_rgb_clients
 _tit "preparing wallets"
 prepare_wallets
 gen_blocks 103
@@ -571,6 +580,11 @@ get_issue_utxo
 issue_asset "usdt"
 issue_asset "other"
 
+## check balances
+_tit "checking asset balances after issuance"
+check_balance "issuer" "0" "2000" "usdt"
+check_balance "issuer" "0" "2000" "other"
+
 # import asset
 _tit "exporting asset"
 export_asset usdt
@@ -580,27 +594,40 @@ _tit "importing asset to recipient 1"
 import_asset usdt 1
 
 
-## transfer loop: issuer -> rcpt 1 -> issuer -> rcpt 2
-## + change spending + witness UTXO transfer
-#_tit "transferring asset from issuer to recipient 1 (spend issuance)"
-#transfer_asset issuer rcpt1 0 1 "$TXID_ISSUE" "$VOUT_ISSUE" 1 100 1900 2000 0 0
-#
-#_tit "transferring asset from issuer to recipient 1 (spending change)"
-#transfer_asset issuer rcpt1 0 1 "$txid_change" "$vout_change" 2 200 1700 1900 100 0
-#
-#_tit "transferring asset from recipient 1 to recipient 2 (spend received)"
-#transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 3 150 150 300 0 0
-#
-#_tit "transferring asset from recipient 2 to issuer"
-#transfer_asset rcpt2 issuer 2 0 "$txid_rcpt" "$vout_rcpt" 4 100 50 150 1700 0
-#
-#_tit "transferring asset from issuer to recipient 1 (spend received back)"
-#transfer_asset issuer rcpt1 0 1 "$txid_rcpt" "$vout_rcpt" 5 50 1750 1800 150 0
-#
-#_tit "transferring asset from recipient 1 to recipient 2 (spend with witness UTXO)"
-#transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 6 40 160 200 50 1
-
-
-## transfer with witness UTXO
+## transfer loop:
+##   1. issuer -> rcpt 1 (spend issuance)
+##     1a. check asset balances (blank)
+##   2. issuer -> rcpt 1 (spend change)
+##   3. rcpt 1 -> rcpt 2 (spend received)
+##   4. rcpt 2 -> issuer (close loop)
+##   5. issuer -> rcpt 1 (spend received back)
+##   6. rcpt 1 -> rcpt 2 (WitnessUtxo)
 _tit "transferring asset from issuer to recipient 1 (spend issuance)"
-transfer_asset issuer rcpt1 0 1 "$TXID_ISSUE" "$VOUT_ISSUE" 1 100 1900 2000 0 1
+transfer_asset issuer rcpt1 0 1 "$TXID_ISSUE" "$VOUT_ISSUE" 1 100 1900 2000 0 0
+
+_tit "checking issuer asset balances after the 1st transfer (blank transition)"
+check_balance "issuer" "0" "1900" "usdt"
+check_balance "issuer" "0" "2000" "other"
+
+_tit "transferring asset from issuer to recipient 1 (spend change)"
+transfer_asset issuer rcpt1 0 1 "$txid_change" "$vout_change" 2 200 1700 1900 100 0
+
+_tit "transferring asset from recipient 1 to recipient 2 (spend received)"
+transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 3 150 150 300 0 0
+
+_tit "transferring asset from recipient 2 to issuer"
+transfer_asset rcpt2 issuer 2 0 "$txid_rcpt" "$vout_rcpt" 4 100 50 150 1700 0
+
+_tit "transferring asset from issuer to recipient 1 (spend received back)"
+transfer_asset issuer rcpt1 0 1 "$txid_rcpt" "$vout_rcpt" 5 50 1750 1800 150 0
+
+_tit "transferring asset from recipient 1 to recipient 2 (spend with witness UTXO)"
+transfer_asset rcpt1 rcpt2 1 2 "$txid_rcpt" "$vout_rcpt" 6 40 160 200 50 1
+
+_tit "checking final asset balances"
+check_balance "issuer" "0" "1750" "usdt"
+check_balance "rcpt1" "1" "160" "usdt"
+check_balance "rcpt2" "2" "90" "usdt"
+check_balance "issuer" "0" "2000" "other"
+
+_tit "sandbox run finished"
