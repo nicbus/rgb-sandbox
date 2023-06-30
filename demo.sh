@@ -6,7 +6,7 @@ CLOSING_METHOD="opret1st"
 # wallet and network
 BDK_CLI_VER="0.27.1"
 RGB_CONTRACTS_VER="0.10.0-beta.2"
-DERIVE_PATH="m/86'/1'/0'/0"
+DERIVE_PATH="m/86'/1'/0'/9"
 DESC_TYPE="wpkh"
 ELECTRUM="localhost:50001"
 NETWORK="regtest"
