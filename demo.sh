@@ -107,7 +107,7 @@ install_rgb_crates() {
     local crate="rgb-contracts"
     _log "installing $crate to ./$crate"
     cargo install rgb-contracts --version $RGB_CONTRACTS_VER \
-        --git "https://github.com/nicbus/rgb" --branch "rgb-sandbox" \
+        --git "https://github.com/RGB-WG/rgb" --branch "master" \
         --root ./$crate --all-features \
         || _die "error installing $crate"
 }
