@@ -3,13 +3,12 @@ interface: RGB20
 globals:
   spec:
     naming:
-      ticker: USDT
-      name: USD Tether
+      ticker: OTHER
+      name: Other asset
       details: ~
     precision: 0
   data:
-    terms: >
-      demo RGB20 asset
+    terms: demo RGB20 asset
     media: ~
   issuedSupply: issued_supply
   created: created_timestamp

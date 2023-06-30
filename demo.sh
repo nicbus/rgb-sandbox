@@ -11,9 +11,7 @@ DESC_TYPE="wpkh"
 ELECTRUM="localhost:50001"
 NETWORK="regtest"
 IFACE="RGB20"
-CONTRACT_FILE="contract/usdt.rgb"
-CONTRACT_TMPL="contract/usdt_template.yaml"
-CONTRACT_YAML="contract/usdt.yaml"
+CONTRACT_DIR="contracts"
 
 # output
 DEBUG=0
@@ -219,49 +217,71 @@ list_unspent() {
         -d "${DESC_TYPE}(${!der_xpub_var})" list_unspent
 }
 
-issue_asset() {
+get_issue_utxo() {
+    _subtit "creating issuance UTXO"
     _log "unspents before issuance" && list_unspent issuer
     gen_utxo issuer
-    txid_issue=$txid
-    vout_issue=$vout
-    _subtit 'issuing asset'
-    cp $CONTRACT_TMPL $CONTRACT_YAML
+    TXID_ISSUE=$txid
+    VOUT_ISSUE=$vout
+}
+
+issue_asset() {
+    local contract_base contract_tmpl contract_yaml
+    local contract_id contract_name issuance
+    contract_name="$1"
+    _subtit "issuing asset \"$contract_name\""
+    contract_base=${CONTRACT_DIR}/${contract_name}
+    contract_tmpl=${contract_base}.yaml.template
+    contract_yaml=${contract_base}.yaml
+    cp "$contract_tmpl" "$contract_yaml"
     sed -i \
         -e "s/issued_supply/2000/" \
         -e "s/created_timestamp/$(date +%s)/" \
         -e "s/closing_method/$CLOSING_METHOD/" \
-        -e "s/txid/$txid_issue/" \
-        -e "s/vout/$vout_issue/" \
-        $CONTRACT_YAML
-    _trace "${RGB[@]}" -d $DATA0 issue "$SCHEMA" $IFACE contract/usdt.yaml
-    CONTRACT_ID="$(_trace "${RGB[@]}" -d $DATA0 contracts | head -1)"
-    _log "contract ID: $CONTRACT_ID"
+        -e "s/txid/$TXID_ISSUE/" \
+        -e "s/vout/$VOUT_ISSUE/" \
+        "$contract_yaml"
+    issuance="$(_trace "${RGB[@]}" -d $DATA0 issue "$SCHEMA" $IFACE "$contract_yaml" 2>&1)"
+    contract_id="$(echo "$issuance" | grep '^A new contract' | cut -d' ' -f4)"
+    printf -v "CONTRACT_ID_$contract_name" '%s' "$contract_id"
+    _log "contract ID: $contract_id"
     _log "contract state after issuance"
-    _trace "${RGB[@]}" -d $DATA0 state "$CONTRACT_ID" $IFACE
+    _trace "${RGB[@]}" -d $DATA0 state "$contract_id" $IFACE
     [ "$DEBUG" != 0 ] && _log "unspents after issuance" && list_unspent issuer
     _wait_user
 }
 
 export_asset() {
-    _trace "${RGB[@]}" -d $DATA0 export "$CONTRACT_ID" $CONTRACT_FILE
+    local contract_file contract_name
+    contract_name="$1"
+    contract_file=${CONTRACT_DIR}/${contract_name}.rgb
+    contract_id="CONTRACT_ID_$contract_name"
+    contract_id="${!contract_id}"
+    _trace "${RGB[@]}" -d $DATA0 export "$contract_id" "$contract_file"
 }
 
 import_asset() {
-    local id="$1"
-    _trace "${RGB[@]}" -d "data${id}" import $CONTRACT_FILE
+    local contract_file contract_name id
+    contract_name="$1"
+    id="$2"
+    contract_file=${CONTRACT_DIR}/${contract_name}.rgb
+    _trace "${RGB[@]}" -d "data${id}" import "$contract_file"
 }
 
 check_balance() {
-    local wallet num expected
+    local wallet num expected contract_name
     wallet="$1"
     id="$2"
     expected="$3"
+    contract_name="$4"
+    contract_id="CONTRACT_ID_$contract_name"
+    contract_id="${!contract_id}"
     mapfile -t outpoints < <(_trace list_unspent "$wallet" | jq -r '.[] |.outpoint')
     balance=0
     if [ "${#outpoints[@]}" -gt 0 ]; then
         _log "outpoints: ${outpoints[*]}"
         local allocations amount
-        allocations=$(_trace "${RGB[@]}" -d "data${id}" state "$CONTRACT_ID" $IFACE \
+        allocations=$(_trace "${RGB[@]}" -d "data${id}" state "$contract_id" $IFACE \
             | grep 'amount=' | awk -F',' '{print $1" "$2}')
         _log "wallet $wallet allocations:"
         echo "$allocations"
@@ -290,11 +310,17 @@ transfer_asset() {
     local blnc_send="${10}"     # expected sender starting balance
     local blnc_rcpt="${11}"     # expected recipient starting balance
     local witness="${12}"       # 0 for blinded UTXO, witness UTXO otherwise
-    local txid_send_2="${13}"   # sender txid n. 2
-    local vout_send_2="${14}"   # sender vout n. 2
+    local name="${13:-"usdt"}"  # optional contract name (default: usdt)
+    local txid_send_2="${14}"   # optional sender txid n. 2
+    local vout_send_2="${15}"   # optional sender vout n. 2
 
-    ## data variables for sender and recipient
-    local rcpt_data send_data
+    ## data variables
+    local contract_id rcpt_data send_data
+    echo $name
+    contract_id="CONTRACT_ID_$name"
+    echo $contract_id
+    contract_id="${!contract_id}"
+    echo $contract_id
     send_data="data${send_id}"
     rcpt_data="data${rcpt_id}"
 
@@ -308,9 +334,9 @@ transfer_asset() {
     _log "expected starting sender balance: $blnc_send"
     _log "expected starting recipient balance: $blnc_rcpt"
     _subtit "initial balances"
-    check_balance "$send_wlt" "${send_id}" "$blnc_send"
+    check_balance "$send_wlt" "${send_id}" "$blnc_send" "$name"
     _log "sender balance: $balance"
-    check_balance "$rcpt_wlt" "${rcpt_id}" "$blnc_rcpt"
+    check_balance "$rcpt_wlt" "${rcpt_id}" "$blnc_rcpt" "$name"
     _log "recipient balance: $balance"
     _wait_user
     blnc_send=$((blnc_send-amt_send))
@@ -330,7 +356,7 @@ transfer_asset() {
     _subtit "generating invoice for transfer n. $num"
     local invoice
     invoice="$(_trace "${RGB[@]}" -d "data${rcpt_id}" invoice \
-        "$CONTRACT_ID" $IFACE "$amt_send" "$CLOSING_METHOD:$txid_rcpt:$vout_rcpt")"
+        "$contract_id" $IFACE "$amt_send" "$CLOSING_METHOD:$txid_rcpt:$vout_rcpt")"
     # replace invoice blinded UTXO with an address if witness UTXO is selected
     if [ "$witness" != 0 ]; then
         # generate address
@@ -481,9 +507,9 @@ transfer_asset() {
     _log "sender unspents after transfer" && list_unspent "$send_wlt"
     _log "recipient unspents after transfer" && list_unspent "$rcpt_wlt"
     _subtit "final balances"
-    check_balance "$send_wlt" "${send_id}" "$blnc_send"
+    check_balance "$send_wlt" "${send_id}" "$blnc_send" "$name"
     _log "sender balance: $balance"
-    check_balance "$rcpt_wlt" "${rcpt_id}" "$blnc_rcpt"
+    check_balance "$rcpt_wlt" "${rcpt_id}" "$blnc_rcpt" "$name"
     _log "recipient balance: $balance"
     _wait_user
 }
@@ -540,22 +566,24 @@ prepare_wallets
 gen_blocks 103
 
 # asset issuance
-_tit "issuing \"USDT\" asset"
-issue_asset
+_tit "issuing assets"
+get_issue_utxo
+issue_asset "usdt"
+issue_asset "other"
 
 # import asset
 _tit "exporting asset"
-export_asset
+export_asset usdt
 
 # import asset
 _tit "importing asset to recipient 1"
-import_asset 1
+import_asset usdt 1
 
 
 ## transfer loop: issuer -> rcpt 1 -> issuer -> rcpt 2
 ## + change spending + witness UTXO transfer
 #_tit "transferring asset from issuer to recipient 1 (spend issuance)"
-#transfer_asset issuer rcpt1 0 1 "$txid_issue" "$vout_issue" 1 100 1900 2000 0 0
+#transfer_asset issuer rcpt1 0 1 "$TXID_ISSUE" "$VOUT_ISSUE" 1 100 1900 2000 0 0
 #
 #_tit "transferring asset from issuer to recipient 1 (spending change)"
 #transfer_asset issuer rcpt1 0 1 "$txid_change" "$vout_change" 2 200 1700 1900 100 0
@@ -575,4 +603,4 @@ import_asset 1
 
 ## transfer with witness UTXO
 _tit "transferring asset from issuer to recipient 1 (spend issuance)"
-transfer_asset issuer rcpt1 0 1 "$txid_issue" "$vout_issue" 1 100 1900 2000 0 1
+transfer_asset issuer rcpt1 0 1 "$TXID_ISSUE" "$VOUT_ISSUE" 1 100 1900 2000 0 1
