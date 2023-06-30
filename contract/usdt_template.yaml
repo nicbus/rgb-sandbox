@@ -6,9 +6,11 @@ globals:
       ticker: USDT
       name: USD Tether
       details: ~
-    precision: 8
-  terms: >
-    demo RGB20 asset
+    precision: 0
+  data:
+    terms: >
+      demo RGB20 asset
+    media: ~
   issuedSupply: issued_supply
   created: created_timestamp
 
