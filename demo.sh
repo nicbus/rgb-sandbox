@@ -107,6 +107,7 @@ install_rgb_crates() {
     local crate="rgb-contracts"
     _log "installing $crate to ./$crate"
     cargo install rgb-contracts --version $RGB_CONTRACTS_VER \
+        --debug \
         --git "https://github.com/RGB-WG/rgb" --branch "master" \
         --root ./$crate --all-features \
         || _die "error installing $crate"
@@ -118,13 +119,19 @@ cleanup() {
 }
 
 setup_rgb_clients() {
-    local data num schemata_dir
+    local data num schemata_dir start end
     data="data"
     schemata_dir="./rgb-schemata/schemata"
+    IMPORT_TIME=0
     for num in 0 1 2; do
+        start=$(date +%s%3N)
+        _trace "${RGB[@]}" -d ${data}${num} import ./rgb-schemata/interfaces/RGB20.rgb
         _trace "${RGB[@]}" -d ${data}${num} import $schemata_dir/NonInflatableAssets.rgb
         _trace "${RGB[@]}" -d ${data}${num} import $schemata_dir/NonInflatableAssets-RGB20.rgb
+        end=$(date +%s%3N)
+        IMPORT_TIME=$((IMPORT_TIME+(end-start)))
     done
+    IMPORT_TIME=$((IMPORT_TIME/3))
     SCHEMA="$(_trace "${RGB[@]}" -d ${data}${num} schemata | awk '{print $1}')"
     _log "schema: $SCHEMA"
     _trace "${RGB[@]}" -d ${data}${num} interfaces
@@ -219,6 +226,14 @@ list_unspent() {
         -d "${DESC_TYPE}(${!der_xpub_var})" list_unspent
 }
 
+quit() {
+    _tit "Timed operations:"
+    _log "- rgb import avg time: $IMPORT_TIME ms"
+    _log "- rgb issue time: $ISSUE_TIME ms"
+    echo
+    exit 2
+}
+
 issue_asset() {
     _log "unspents before issuance" && list_unspent issuer
     gen_utxo issuer
@@ -233,7 +248,11 @@ issue_asset() {
         -e "s/txid/$txid_issue/" \
         -e "s/vout/$vout_issue/" \
         $CONTRACT_YAML
+    local start end
+    start=$(date +%s%3N)
     _trace "${RGB[@]}" -d $DATA0 issue "$SCHEMA" $IFACE contract/usdt.yaml
+    end=$(date +%s%3N)
+    ISSUE_TIME=$((end-start))
     CONTRACT_ID="$(_trace "${RGB[@]}" -d $DATA0 contracts | head -1)"
     _log "contract ID: $CONTRACT_ID"
     _log "contract state after issuance"
@@ -542,6 +561,7 @@ gen_blocks 103
 # asset issuance
 _tit "issuing \"USDT\" asset"
 issue_asset
+quit
 
 # import asset
 _tit "exporting asset"
