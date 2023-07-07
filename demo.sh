@@ -586,12 +586,12 @@ get_issue_utxo
 issue_asset "usdt"
 issue_asset "other"
 
-## check balances
+# check balances
 _tit "checking asset balances after issuance"
 check_balance "issuer" "0" "2000" "usdt"
 check_balance "issuer" "0" "2000" "other"
 
-# import asset
+# export asset
 _tit "exporting asset"
 export_asset usdt
 
@@ -600,14 +600,18 @@ _tit "importing asset to recipient 1"
 import_asset usdt 1
 
 
-## transfer loop:
-##   1. issuer -> rcpt 1 (spend issuance)
-##     1a. check asset balances (blank)
-##   2. issuer -> rcpt 1 (spend change)
-##   3. rcpt 1 -> rcpt 2 (spend received)
-##   4. rcpt 2 -> issuer (close loop)
-##   5. issuer -> rcpt 1 (spend received back)
-##   6. rcpt 1 -> rcpt 2 (WitnessUtxo)
+# transfer loop:
+#   1. issuer -> rcpt 1 (spend issuance)
+#     1a. only initiate tranfer, don't complete (aborted transfer)
+#     1b. restart transfer and complete it
+#   2. check asset balances (blank)
+#   3. issuer -> rcpt 1 (spend change)
+#   4. rcpt 1 -> rcpt 2 (spend received)
+#   5. rcpt 2 -> issuer (close loop)
+#   6. issuer -> rcpt 1 (spend received back)
+#   7. rcpt 1 -> rcpt 2 (WitnessUtxo)
+_tit "creating transfer from issuer to recipient 1 (but not cmpleting it)"
+transfer_create issuer rcpt1 0 1 "$TXID_ISSUE" "$VOUT_ISSUE" 1 100 1900 2000 0 0
 _tit "transferring asset from issuer to recipient 1 (spend issuance)"
 transfer_asset issuer rcpt1 0 1 "$TXID_ISSUE" "$VOUT_ISSUE" 1 100 1900 2000 0 0
 
