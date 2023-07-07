@@ -278,7 +278,7 @@ check_balance() {
     contract_id="CONTRACT_ID_$contract_name"
     contract_id="${!contract_id}"
     mapfile -t outpoints < <(_trace list_unspent "$wallet" | jq -r '.[] |.outpoint')
-    balance=0
+    BALANCE=0
     if [ "${#outpoints[@]}" -gt 0 ]; then
         _log "outpoints:"
         # shellcheck disable=2001
@@ -291,84 +291,88 @@ check_balance() {
         for utxo in "${outpoints[@]}"; do
             amount=$(echo "$allocations" \
                 | grep "$utxo" | awk '{print $1}' | awk -F'=' '{print $2}')
-            balance=$((balance + amount))
+            BALANCE=$((BALANCE + amount))
         done
     fi
-    if [ "$balance" != "$expected" ]; then
+    if [ "$BALANCE" != "$expected" ]; then
         _die "$(printf '%s' \
-            "balance \"$balance\" for contract \"$contract_id\" " \
+            "balance \"$BALANCE\" for contract \"$contract_id\" " \
             "($contract_name) differs from the expected \"$expected\"")"
     fi
     _log "$(printf '%s' \
-        "balance \"$balance\" for contract \"$contract_id\" " \
+        "balance \"$BALANCE\" for contract \"$contract_id\" " \
         "($contract_name) matches the expected one")"
 }
 
 transfer_asset() {
+    transfer_create "$@"    # parameter pass-through
+    transfer_complete       # uses global variables set by transfer_create
+    # unset global variables set by transfer operations
+    unset BALANCE CONSIGNMENT DER_XPUB_VAR NAME PSBT
+    unset BLNC_RCPT BLNC_SEND RCPT_ID RCPT_WLT SEND_ID SEND_WLT
+}
+transfer_create() {
     ## params
-    local send_wlt="$1"         # sender wallet name
-    local rcpt_wlt="$2"         # recipient wallet name
-    local send_id="$3"          # sender id (for CLIs and data dir)
-    local rcpt_id="$4"          # recipient id (for CLIs and data dir)
+    SEND_WLT="$1"               # sender wallet name
+    RCPT_WLT="$2"               # recipient wallet name
+    SEND_ID="$3"                # sender id (for CLIs and data dir)
+    RCPT_ID="$4"                # recipient id (for CLIs and data dir)
     local txid_send="$5"        # sender txid
     local vout_send="$6"        # sender vout
     local num="$7"              # transfer number
     local amt_send="$8"         # asset amount to send
     local amt_change="$9"       # asset amount to get back as change
-    local blnc_send="${10}"     # expected sender starting balance
-    local blnc_rcpt="${11}"     # expected recipient starting balance
+    BLNC_SEND="${10}"           # expected sender starting balance
+    BLNC_RCPT="${11}"           # expected recipient starting balance
     local witness="${12}"       # 0 for blinded UTXO, witness UTXO otherwise
-    local name="${13:-"usdt"}"  # optional contract name (default: usdt)
+    NAME="${13:-"usdt"}"        # optional contract name (default: usdt)
     local txid_send_2="${14}"   # optional sender txid n. 2
     local vout_send_2="${15}"   # optional sender vout n. 2
 
     ## data variables
     local contract_id rcpt_data send_data
-    echo $name
-    contract_id="CONTRACT_ID_$name"
-    echo $contract_id
+    contract_id="CONTRACT_ID_$NAME"
     contract_id="${!contract_id}"
-    echo $contract_id
-    send_data="data${send_id}"
-    rcpt_data="data${rcpt_id}"
+    send_data="data${SEND_ID}"
+    rcpt_data="data${RCPT_ID}"
 
     ## starting situation
-    _log "spending $amt_send from $txid_send:$vout_send ($send_wlt) with $amt_change change"
+    _log "spending $amt_send from $txid_send:$vout_send ($SEND_WLT) with $amt_change change"
     if [ -n "$txid_send_2" ] && [ -n "$vout_send_2" ]; then  # handle double input case
         _log "also using $txid_send_2:$vout_send_2 as input"
     fi
-    _log "sender unspents before transfer" && list_unspent "$send_wlt"
-    _log "recipient unspents before transfer" && list_unspent "$rcpt_wlt"
-    _log "expected starting sender balance: $blnc_send"
-    _log "expected starting recipient balance: $blnc_rcpt"
+    _log "sender unspents before transfer" && list_unspent "$SEND_WLT"
+    _log "recipient unspents before transfer" && list_unspent "$RCPT_WLT"
+    _log "expected starting sender balance: $BLNC_SEND"
+    _log "expected starting recipient balance: $BLNC_RCPT"
     _subtit "initial balances"
-    check_balance "$send_wlt" "${send_id}" "$blnc_send" "$name"
-    _log "sender balance: $balance"
-    check_balance "$rcpt_wlt" "${rcpt_id}" "$blnc_rcpt" "$name"
-    _log "recipient balance: $balance"
+    check_balance "$SEND_WLT" "${SEND_ID}" "$BLNC_SEND" "$NAME"
+    _log "sender balance: $BALANCE"
+    check_balance "$RCPT_WLT" "${RCPT_ID}" "$BLNC_RCPT" "$NAME"
+    _log "recipient balance: $BALANCE"
     _wait_user
-    blnc_send=$((blnc_send-amt_send))
-    blnc_rcpt=$((blnc_rcpt+amt_send))
-    _log "expected final sender balance: $blnc_send"
-    _log "expected final recipient balance: $blnc_rcpt"
-    [ "$blnc_send" = "$amt_change" ] || \
-        _die "expected final sender balance ($blnc_send) differs from the provided one ($amt_change)"
+    BLNC_SEND=$((BLNC_SEND-amt_send))
+    BLNC_RCPT=$((BLNC_RCPT+amt_send))
+    _log "expected final sender balance: $BLNC_SEND"
+    _log "expected final recipient balance: $BLNC_RCPT"
+    [ "$BLNC_SEND" = "$amt_change" ] || \
+        _die "expected final sender balance ($BLNC_SEND) differs from the provided one ($amt_change)"
 
     ## generate invoice
     # generate UTXO
     _subtit "preparing receiver UTXO"
-    gen_utxo "$rcpt_wlt"
+    gen_utxo "$RCPT_WLT"
     txid_rcpt=$txid
     vout_rcpt=$vout
     # generate invoice
     _subtit "generating invoice for transfer n. $num"
     local invoice
-    invoice="$(_trace "${RGB[@]}" -d "data${rcpt_id}" invoice \
+    invoice="$(_trace "${RGB[@]}" -d "$rcpt_data" invoice \
         "$contract_id" $IFACE "$amt_send" "$CLOSING_METHOD:$txid_rcpt:$vout_rcpt")"
     # replace invoice blinded UTXO with an address if witness UTXO is selected
     if [ "$witness" != 0 ]; then
         # generate address
-        gen_addr_bdk "$rcpt_wlt"
+        gen_addr_bdk "$RCPT_WLT"
         local addr_rcpt=$ADDR
         invoice="${invoice%+*}"         # drop +<blinded>
         invoice="${invoice}+$addr_rcpt" # add +<address>
@@ -378,22 +382,22 @@ transfer_asset() {
     ## generate addresses to receive asset change and tx btc output
     _subtit "generating new address for issuer"
     local addr_send
-    gen_addr_bdk "$send_wlt"
+    gen_addr_bdk "$SEND_WLT"
     addr_send=$ADDR
 
     ## prepare psbt
     _subtit "creating PSBT"
-    [ "$DEBUG" != 0 ] && list_unspent "$send_wlt"
+    [ "$DEBUG" != 0 ] && list_unspent "$SEND_WLT"
     local filter=".[] |select(.outpoint|contains(\"$txid_send\")) |.txout |.amount"
     local amnt amnt_2
-    amnt="$(list_unspent "$send_wlt" | jq -r "$filter")"
+    amnt="$(list_unspent "$SEND_WLT" | jq -r "$filter")"
     if [ -n "$txid_send_2" ] && [ -n "$vout_send_2" ]; then  # handle double input case
         filter=".[] |select(.outpoint|contains(\"$txid_send_2\")) |.txout |.amount"
-        amnt_2="$(list_unspent "$send_wlt" | jq -r "$filter")"
+        amnt_2="$(list_unspent "$SEND_WLT" | jq -r "$filter")"
         amnt=$((amnt + amnt_2))
     fi
-    local psbt=tx_${num}.psbt
-    local der_xpub_var="der_xpub_$send_wlt"
+    PSBT=tx_${num}.psbt
+    DER_XPUB_VAR="der_xpub_$SEND_WLT"
     local utxos=("$txid_send:$vout_send")
     if [ -n "$txid_send_2" ] && [ -n "$vout_send_2" ]; then  # handle double input case
         utxos+=("$txid_send_2:$vout_send_2")
@@ -410,7 +414,7 @@ transfer_asset() {
         input_amt=0
         for utxo in "${utxos[@]}"; do
             local amt_filter=".[] |select(.outpoint == \"$utxo\") |.txout |.value"
-            utxo_amt=$(list_unspent "$send_wlt" | jq -r "$amt_filter")
+            utxo_amt=$(list_unspent "$SEND_WLT" | jq -r "$amt_filter")
             input_amt=$((input_amt+utxo_amt))
         done
         rcpt_amt=5000
@@ -420,28 +424,28 @@ transfer_asset() {
         psbt_to=(--to "$addr_send:$change_amt" --to "$addr_rcpt:$rcpt_amt")
     fi
     [ "$CLOSING_METHOD" = "opret1st" ] && opret=("--add_string" "opret")
-    _trace $BDKI -n $NETWORK wallet -w "$send_wlt" \
-        -d "${DESC_TYPE}(${!der_xpub_var})" create_tx --enable_rbf \
+    _trace $BDKI -n $NETWORK wallet -w "$SEND_WLT" \
+        -d "${DESC_TYPE}(${!DER_XPUB_VAR})" create_tx --enable_rbf \
         -f 5 "${inputs[@]}" "${psbt_to[@]}" "${opret[@]}" \
-            | jq -r '.psbt' | base64 -d >"$send_data/$psbt"
+            | jq -r '.psbt' | base64 -d >"$send_data/$PSBT"
 
     ## set opret/tapret host
     _subtit "setting opret/tapret host in PSBT"
-    _trace "${RGB[@]}" -d "data${send_id}" set-host --method $CLOSING_METHOD \
-        "$send_data/$psbt"
+    _trace "${RGB[@]}" -d "$send_data" set-host --method $CLOSING_METHOD \
+        "$send_data/$PSBT"
 
     ## RGB tansfer
     _subtit "preparing RGB transfer"
-    local consignment="consignment_${num}.rgb"
-    _trace "${RGB[@]}" -d "data${send_id}" transfer --method $CLOSING_METHOD \
-        "$send_data/$psbt" "$invoice" "$send_data/$consignment"
-    if ! ls "$send_data/$consignment" >/dev/null 2>&1; then
-        _die "could not locate consignment file: $send_data/$consignment"
+    CONSIGNMENT="consignment_${num}.rgb"
+    _trace "${RGB[@]}" -d "$send_data" transfer --method $CLOSING_METHOD \
+        "$send_data/$PSBT" "$invoice" "$send_data/$CONSIGNMENT"
+    if ! ls "$send_data/$CONSIGNMENT" >/dev/null 2>&1; then
+        _die "could not locate consignment file: $send_data/$CONSIGNMENT"
     fi
 
     ## show/extract psbt data
     local decoded_psbt
-    decoded_psbt="$(_trace "${BCLI[@]}" decodepsbt "$(base64 -w0 "$send_data/$psbt")")"
+    decoded_psbt="$(_trace "${BCLI[@]}" decodepsbt "$(base64 -w0 "$send_data/$PSBT")")"
     if [ "$DEBUG" != 0 ]; then
         _log "showing psbt including RGB transfer data"
         echo "$decoded_psbt" | jq
@@ -452,73 +456,75 @@ transfer_asset() {
     _log "change outpoint: $txid_change:$vout_change"
 
     ## inspect consignment (when in debug mode)
-    _trace "${RGB[@]}" -d "data${rcpt_id}" inspect \
-        "$send_data/$consignment" > "$send_data/$consignment.inspect"
-    _log "consignment inspect logged to file: $send_data/$consignment.inspect"
+    _trace "${RGB[@]}" -d "$rcpt_data" inspect \
+        "$send_data/$CONSIGNMENT" > "$send_data/$CONSIGNMENT.inspect"
+    _log "consignment inspect logged to file: $send_data/$CONSIGNMENT.inspect"
 
     ## copy generated consignment to recipient
-    _trace cp {"$send_data","$rcpt_data"}/"$consignment"
+    _trace cp {"$send_data","$rcpt_data"}/"$CONSIGNMENT"
+}
 
+transfer_complete() {
     ## recipient: validate transfer
     _subtit "validating consignment"
-    local vldt
-    date
-    vldt="$(_trace "${RGB[@]}" -d "data${rcpt_id}" validate \
-        "$rcpt_data/$consignment" 2>&1)"
+    local rcpt_data send_data vldt
+    send_data="data${SEND_ID}"
+    rcpt_data="data${RCPT_ID}"
+    vldt="$(_trace "${RGB[@]}" -d "$rcpt_data" validate \
+        "$rcpt_data/$CONSIGNMENT" 2>&1)"
     _log "$vldt"
-    date
     if echo "$vldt" | grep -q 'Consignment is NOT valid'; then
         _die "validation failed"
     fi
 
     ## sign + finalize + broadcast psbt
     _subtit "signing and broadcasting tx"
-    local der_xprv_var="der_xprv_$send_wlt"
+    local der_xprv_var="der_xprv_$SEND_WLT"
     local psbt_finalized psbt_signed
-    psbt_signed=$(_trace $BDKI -n $NETWORK wallet -w "$send_wlt" \
+    psbt_signed=$(_trace $BDKI -n $NETWORK wallet -w "$SEND_WLT" \
         -d "${DESC_TYPE}(${!der_xprv_var})" sign \
-        --psbt "$(base64 -w0 "$send_data/$psbt")")
+        --psbt "$(base64 -w0 "$send_data/$PSBT")")
     psbt_finalized=$(echo "$psbt_signed" \
         | jq -r 'select(.is_finalized = true) |.psbt')
     [ -n "$psbt_finalized" ] || _die "error signing or finalizing PSBT"
     echo "$psbt_finalized" \
-        | base64 -d > "data${send_id}/finalized-bdk_${num}.psbt"
+        | base64 -d > "$send_data/finalized-bdk_${num}.psbt"
     _log "signed + finalized PSBT: $psbt_finalized"
-    _trace $BDKI -n $NETWORK wallet -w "$send_wlt" \
-        -d "${DESC_TYPE}(${!der_xpub_var})" -s $ELECTRUM broadcast \
+    _trace $BDKI -n $NETWORK wallet -w "$SEND_WLT" \
+        -d "${DESC_TYPE}(${!DER_XPUB_VAR})" -s $ELECTRUM broadcast \
         --psbt "$psbt_finalized"
     _subtit "mining a block"
     gen_blocks 1
     _subtit "syncing wallets"
-    sync_wallet "$send_wlt"
-    sync_wallet "$rcpt_wlt"
+    sync_wallet "$SEND_WLT"
+    sync_wallet "$RCPT_WLT"
     _wait_user
 
     ## accept transfer (recipient + sender)
     local accept
     _subtit "accepting transfer (recipient)"
-    accept="$(_trace "${RGB[@]}" -d "data${rcpt_id}" accept \
-        "$rcpt_data/$consignment" 2>&1)"
+    accept="$(_trace "${RGB[@]}" -d "data${RCPT_ID}" accept \
+        "$rcpt_data/$CONSIGNMENT" 2>&1)"
     _log "$accept"
     if echo "$accept" | grep -q 'Consignment is NOT valid'; then
         _die "validation failed"
     fi
     _subtit "accepting transfer (sender)"
-    accept="$(_trace "${RGB[@]}" -d "data${send_id}" accept \
-        "$send_data/$consignment" 2>&1)"
+    accept="$(_trace "${RGB[@]}" -d "$send_data" accept \
+        "$send_data/$CONSIGNMENT" 2>&1)"
     _log "$accept"
     if echo "$accept" | grep -q 'Consignment is NOT valid'; then
         _die "validation failed"
     fi
 
     ## ending situation
-    _log "sender unspents after transfer" && list_unspent "$send_wlt"
-    _log "recipient unspents after transfer" && list_unspent "$rcpt_wlt"
+    _log "sender unspents after transfer" && list_unspent "$SEND_WLT"
+    _log "recipient unspents after transfer" && list_unspent "$RCPT_WLT"
     _subtit "final balances"
-    check_balance "$send_wlt" "${send_id}" "$blnc_send" "$name"
-    _log "sender balance: $balance"
-    check_balance "$rcpt_wlt" "${rcpt_id}" "$blnc_rcpt" "$name"
-    _log "recipient balance: $balance"
+    check_balance "$SEND_WLT" "${SEND_ID}" "$BLNC_SEND" "$NAME"
+    _log "sender balance: $BALANCE"
+    check_balance "$RCPT_WLT" "${RCPT_ID}" "$BLNC_RCPT" "$NAME"
+    _log "recipient balance: $BALANCE"
     _wait_user
 }
 
