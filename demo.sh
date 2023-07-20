@@ -5,7 +5,7 @@ CLOSING_METHOD="opret1st"
 
 # wallet and network
 BDK_CLI_VER="0.27.1"
-RGB_CONTRACTS_VER="0.10.0-beta.2"
+RGB_CONTRACTS_VER="0.10.0-rc.2"
 DERIVE_PATH="m/86'/1'/0'/9"
 DESC_TYPE="wpkh"
 ELECTRUM="localhost:50001"
@@ -105,7 +105,6 @@ install_rgb_crates() {
     local crate="rgb-contracts"
     _log "installing $crate to ./$crate"
     cargo install rgb-contracts --version $RGB_CONTRACTS_VER \
-        --git "https://github.com/RGB-WG/rgb" --branch "master" \
         --root ./$crate --all-features \
         || _die "error installing $crate"
 }
