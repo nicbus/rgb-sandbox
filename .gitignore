@@ -11,3 +11,6 @@ dataindex/
 contracts/*.rgb
 contracts/*.yaml
 !contracts/*.template
+
+# consignment inspect files
+consignment_*.rgb.inspect
