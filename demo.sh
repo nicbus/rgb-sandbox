@@ -554,7 +554,7 @@ _tit "setting up"
 check_tools
 set_aliases
 install_rust_crate "bdk-cli" "$BDK_CLI_VER" "$BDK_CLI_FEATURES"
-install_rust_crate "rgb-contracts" "$RGB_CONTRACTS_VER" "$RGB_CONTRACTS_FEATURES"
+install_rust_crate "rgb-contracts" "$RGB_CONTRACTS_VER" "$RGB_CONTRACTS_FEATURES" #"--path ../rgb"
 trap cleanup EXIT
 start_services
 setup_rgb_clients
