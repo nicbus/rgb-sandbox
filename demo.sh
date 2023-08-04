@@ -24,6 +24,7 @@ WALLETS=("issuer" "rcpt1" "rcpt2")
 declare -A CONTRACT_MAP
 declare -A DER_XPRV_MAP
 declare -A DER_XPUB_MAP
+declare -A UTXOS
 declare -A WLT_ID_MAP
 WLT_ID_MAP[${WALLETS[0]}]=0
 WLT_ID_MAP[${WALLETS[1]}]=1
@@ -71,40 +72,47 @@ _trace() {
 # internal functions
 _gen_addr_bdk() {
     local wallet="$1"
-    _log "generating new address for wallet \"$wallet\""
+    [ "$DEBUG" = 1 ] && _log "generating new address for wallet \"$wallet\""
     local der_xpub=${DER_XPUB_MAP[$wallet]}
     ADDR=$(_trace "$BDKI" -n $NETWORK wallet -w "$wallet" -d "${DESC_TYPE}($der_xpub)" \
         get_new_address | jq -r '.address')
-    _log "generated address: $ADDR"
+    [ "$DEBUG" = 1 ] && _log "generated address: $ADDR"
 }
 
 _gen_blocks() {
     local count="$1"
-    _log "mining $count block(s)"
+    [ "$DEBUG" = 1 ] && _log "mining $count block(s)"
     _trace "${BCLI[@]}" -rpcwallet=miner -generate "$count" >/dev/null
     sleep 1     # give electrs time to index
 }
 
 _gen_utxo() {
     local wallet="$1"
+    local der_xpub filter
     _gen_addr_bdk "$wallet"
-    _log "sending funds to wallet \"$wallet\""
-    txid="$(_trace "${BCLI[@]}" -rpcwallet=miner sendtoaddress "$ADDR" 1)"
+    [ "$DEBUG" = 1 ] && _log "sending funds to wallet \"$wallet\""
+    TXID="$(_trace "${BCLI[@]}" -rpcwallet=miner sendtoaddress "$ADDR" 1)"
     _gen_blocks 1
     _sync_wallet "$wallet"
-    _get_utxo "$wallet" "$txid"
+    [ "$DEBUG" = 1 ] && _log "extracting vout"
+    der_xpub=${DER_XPUB_MAP[$wallet]}
+    filter=".[] | .outpoint | select(contains(\"$TXID\"))"
+    VOUT=$(_trace "$BDKI" -n $NETWORK wallet -w "$wallet" -d "${DESC_TYPE}($der_xpub)" \
+        list_unspent | jq -r "$filter" | cut -d: -f2)
+    [ -n "$VOUT" ] || _die "couldn't retrieve vout for txid $TXID"
+    [ "$DEBUG" = 1 ] && _log "txid $TXID, vout: $VOUT"
 }
 
 _get_utxo() {
     local wallet="$1"
-    local txid="$2"
-    _log "extracting vout"
-    local der_xpub=${DER_XPUB_MAP[$wallet]}
-    local filter=".[] | .outpoint | select(contains(\"$txid\"))"
-    vout=$(_trace "$BDKI" -n $NETWORK wallet -w "$wallet" -d "${DESC_TYPE}($der_xpub)" \
-        list_unspent | jq -r "$filter" | cut -d: -f2)
-    [ -n "$vout" ] || _die "couldn't retrieve vout for txid $txid"
-    _log "txid $txid, vout: $vout"
+    local utxos
+    utxos=${UTXOS[$wallet]}
+    IFS=, read -ra utxos <<< "${UTXOS[$wallet]}"
+    [ "${#utxos}" -lt 1 ] && _die "no UTXOs available for wallet $wallet"
+    UTXO=${utxos[-1]}               # get last UTXO
+    unset "utxos[${#utxos[@]}-1]"   # drop last UTXO
+    UTXOS[$wallet]=$(IFS=,; echo "${utxos[*]}")
+    [ "$DEBUG" = 1 ] && _log "utxo: $UTXO"
 }
 
 _list_unspent() {
@@ -116,10 +124,10 @@ _list_unspent() {
 
 _sync_wallet() {
     local wallet="$1"
-    _log "syncing wallet $wallet"
+    [ "$DEBUG" = 1 ] && _log "syncing wallet $wallet"
     local der_xpub=${DER_XPUB_MAP[$wallet]}
     _trace "$BDKI" -n $NETWORK wallet -w "$wallet" \
-        -d "${DESC_TYPE}($der_xpub)" -s $ELECTRUM sync
+        -d "${DESC_TYPE}($der_xpub)" -s $ELECTRUM sync >/dev/null
 }
 
 # main functions
@@ -176,6 +184,20 @@ cleanup() {
     rm -rf data{0,1,2,core,index}
 }
 
+create_utxos() {
+    local wallet="$1"
+    local num="$2"
+    declare -a utxos
+    _subtit "crating $num UTXOs for wallet $wallet"
+    for _i in $(seq "$num"); do
+        _gen_utxo "$wallet"
+        utxos+=("$TXID:$VOUT")
+        [ "$DEBUG" != 1 ] && echo -n "."
+    done
+    [ "$DEBUG" != 1 ] && echo
+    UTXOS[$wallet]=$(IFS=,; echo "${utxos[*]}")
+}
+
 export_asset() {
     local contract_name="$1"
     local contract_file contract_id wlt_data
@@ -189,8 +211,8 @@ get_issue_utxo() {
     _subtit "creating issuance UTXO"
     [ $DEBUG = 1 ] && _log "unspents before issuance" && _list_unspent issuer
     _gen_utxo issuer
-    TXID_ISSUE=$txid
-    VOUT_ISSUE=$vout
+    TXID_ISSUE=$TXID
+    VOUT_ISSUE=$VOUT
 }
 
 import_asset() {
@@ -366,11 +388,13 @@ transfer_create() {
     ## generate invoice
     _subtit "(recipient) preparing invoice for transfer n. $TRANSFER_NUM"
     if [ "$reuse_invoice" != 1 ]; then
-        _gen_utxo "$RCPT_WLT"
-        TXID_RCPT=$txid
-        VOUT_RCPT=$vout
+        if [ "$witness" = 1 ]; then
+            UTXO="1111111111111111111111111111111111111111111111111111111111111111:1"
+        else
+            _get_utxo "$RCPT_WLT"
+        fi
         INVOICE="$(_trace "${RGB[@]}" -d "$rcpt_data" invoice \
-            "$contract_id" $IFACE "$send_amt" "$CLOSING_METHOD:$TXID_RCPT:$VOUT_RCPT")"
+            "$contract_id" $IFACE "$send_amt" "$CLOSING_METHOD:$UTXO")"
         # replace invoice blinded UTXO with an address if witness UTXO is selected
         if [ "$witness" = 1 ]; then
             _gen_addr_bdk "$RCPT_WLT"
@@ -572,6 +596,12 @@ _tit "importing asset to recipient 1"
 import_asset usdt rcpt1
 import_asset usdt rcpt2
 
+# create utxos
+_tit "creating utxos"
+create_utxos issuer 1
+create_utxos rcpt1 3
+create_utxos rcpt2 1
+
 # transfer loop:
 #   1. issuer -> rcpt 1 (spend issuance)
 #     1a. only initiate tranfer, don't complete (aborted transfer)
@@ -586,7 +616,7 @@ _tit "creating transfer from issuer to recipient 1 (but not completing it)"
 transfer_create issuer/rcpt1 "$TXID_ISSUE:$VOUT_ISSUE" 2000/0 100/1900 0 0
 _tit "transferring asset from issuer to recipient 1 (spend issuance)"
 transfer_asset issuer/rcpt1 "$TXID_ISSUE:$VOUT_ISSUE" 2000/0 100/1900 0 1
-outpoint_1="$TXID_RCPT:$VOUT_RCPT"
+outpoint_1="$UTXO"
 
 _tit "checking issuer asset balances after the 1st transfer (blank transition)"
 check_balance "issuer" "1900" "usdt"
@@ -594,19 +624,19 @@ check_balance "issuer" "2000" "other"
 
 _tit "transferring asset from issuer to recipient 1 (spend change)"
 transfer_asset issuer/rcpt1 "$TXID_CHANGE:$VOUT_CHANGE" 1900/100 200/1700 0 0
-outpoint_2="$TXID_RCPT:$VOUT_RCPT"
+outpoint_2="$UTXO"
 
 _tit "transferring asset from recipient 1 to recipient 2 (spend received)"
 transfer_asset rcpt1/rcpt2 "$outpoint_1" 300/0 150/150 0 0 usdt "$outpoint_2"
 
 _tit "transferring asset from recipient 2 to issuer"
-transfer_asset rcpt2/issuer "$TXID_RCPT:$VOUT_RCPT" 150/1700 100/50 0 0
+transfer_asset rcpt2/issuer "$UTXO" 150/1700 100/50 0 0
 
 _tit "transferring asset from issuer to recipient 1 (spend received back)"
-transfer_asset issuer/rcpt1 "$TXID_RCPT:$VOUT_RCPT" 1800/150 50/1750 0 0
+transfer_asset issuer/rcpt1 "$UTXO" 1800/150 50/1750 0 0
 
 _tit "transferring asset from recipient 1 to recipient 2 (spend with witness UTXO)"
-transfer_asset rcpt1/rcpt2 "$TXID_RCPT:$VOUT_RCPT" 200/50 40/160 1 0
+transfer_asset rcpt1/rcpt2 "$UTXO" 200/50 40/160 1 0
 
 _tit "checking final asset balances"
 check_balance "issuer" "1750" "usdt"
