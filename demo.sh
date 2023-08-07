@@ -528,6 +528,8 @@ while [ -n "$1" ]; do
             exit 0
             ;;
         -t|--tapret)
+            _log "tapret support is unavailable at the moment"
+            exit 2
             CLOSING_METHOD="tapret1st"
             CHANGE_INDEX=10
             DESC_TYPE="tr"
