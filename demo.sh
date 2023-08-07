@@ -510,8 +510,10 @@ transfer_complete() {
         --psbt "$psbt_finalized"
 
     ## mine and sync wallets
-    _subtit "confirming transaction"
-    _gen_blocks 1
+    if [ "$NO_CONFIRM_TRANSFER_TXS" != 1 ]; then
+        _subtit "confirming transaction"
+        _gen_blocks 1
+    fi
     _subtit "syncing wallets"
     _sync_wallet "$SEND_WLT"
     _sync_wallet "$RCPT_WLT"
@@ -539,6 +541,7 @@ help() {
     echo ""
     echo "options:"
     echo "    -h --help     show this help message"
+    echo "    -n --noconf   don't confirm transfer transcations"
     echo "    -t --tapret   user tapret1st closing method"
     echo "    -v --verbose  enable verbose output"
 }
@@ -550,6 +553,9 @@ while [ -n "$1" ]; do
         -h|--help)
             help
             exit 0
+            ;;
+        -n|--noconf)
+            NO_CONFIRM_TRANSFER_TXS=1
             ;;
         -t|--tapret)
             _log "tapret support is unavailable at the moment"
