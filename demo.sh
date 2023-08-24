@@ -8,7 +8,7 @@ RGB_CONTRACTS_VER="0.10.0-rc.5"
 TRANSFER_NUM=0
 
 # wallet and network
-AMT_FEES=1000
+AMT_FEES=2000
 AMT_RCPT=5000
 BDK_CLI_FEATURES="--features electrum"
 RGB_CONTRACTS_FEATURES="--all-features"
@@ -448,6 +448,10 @@ transfer_create() {
     # select vout which is not OP_RETURN (0) nor witness UTXO (AMT_RCPT)
     VOUT_CHANGE="$(echo "$decoded_psbt" | jq -r '.tx |.vout |.[] |select(.value > 0.001) |.n')"
     [ $DEBUG = 1 ] && _log "change outpoint: $TXID_CHANGE:$VOUT_CHANGE"
+    if [ "$witness" = 1 ]; then
+        TXID_RCPT=$TXID_CHANGE
+        VOUT_RCPT="$(echo "$decoded_psbt" | jq -r '.tx |.vout |.[] |select(.value == 5e-05) |.n')"
+    fi
 
     ## copy generated consignment to recipient
     _subtit "(sender) copying consignment to recipient data directory"
@@ -567,10 +571,8 @@ prepare_wallets
 _tit "issuing assets"
 get_issue_utxo
 issue_asset "usdt"
-issue_asset "other"
 _tit "checking asset balances after issuance"
 check_balance "issuer" "2000" "usdt"
-check_balance "issuer" "2000" "other"
 
 # export/import asset
 _tit "exporting asset"
@@ -579,46 +581,16 @@ _tit "importing asset to recipient 1"
 import_asset usdt rcpt1
 import_asset usdt rcpt2
 
-# transfer loop:
-#   1. issuer -> rcpt 1 (spend issuance)
-#     1a. only initiate tranfer, don't complete (aborted transfer)
-#     1b. retry transfer (re-using invoice) and complete it
-#   2. check asset balances (blank)
-#   3. issuer -> rcpt 1 (spend change)
-#   4. rcpt 1 -> rcpt 2 (spend both received allocations)
-#   5. rcpt 2 -> issuer (close loop)
-#   6. issuer -> rcpt 1 (spend received back)
-#   7. rcpt 1 -> rcpt 2 (WitnessUtxo)
-_tit "creating transfer from issuer to recipient 1 (but not completing it)"
-transfer_create issuer/rcpt1 "$TXID_ISSUE:$VOUT_ISSUE" 2000/0 100/1900 0 0
-_tit "transferring asset from issuer to recipient 1 (spend issuance)"
-transfer_asset issuer/rcpt1 "$TXID_ISSUE:$VOUT_ISSUE" 2000/0 100/1900 0 1
+# rcpt1: receive twice + spend 1st received allocation
+# 1. send from issuer to rcpt1 (blinded)
+# 2. send from issuer to rcpt1 (witness)
+# 3. send from rcpt1 to rcpt2 (witness) -> fails
+_tit "transferring asset from issuer to recipient 1 (blinded)"
+transfer_asset issuer/rcpt1 "$TXID_ISSUE:$VOUT_ISSUE" 2000/0 100/1900 0 0
 outpoint_1="$TXID_RCPT:$VOUT_RCPT"
 
-_tit "checking issuer asset balances after the 1st transfer (blank transition)"
-check_balance "issuer" "1900" "usdt"
-check_balance "issuer" "2000" "other"
-
-_tit "transferring asset from issuer to recipient 1 (spend change)"
-transfer_asset issuer/rcpt1 "$TXID_CHANGE:$VOUT_CHANGE" 1900/100 200/1700 0 0
-outpoint_2="$TXID_RCPT:$VOUT_RCPT"
+_tit "creating asset transfer from issuer to recipient 1 (witness)"
+transfer_asset issuer/rcpt1 "$TXID_CHANGE:$VOUT_CHANGE" 1900/100 200/1700 1 0
 
 _tit "transferring asset from recipient 1 to recipient 2 (spend received)"
-transfer_asset rcpt1/rcpt2 "$outpoint_1" 300/0 150/150 0 0 usdt "$outpoint_2"
-
-_tit "transferring asset from recipient 2 to issuer"
-transfer_asset rcpt2/issuer "$TXID_RCPT:$VOUT_RCPT" 150/1700 100/50 0 0
-
-_tit "transferring asset from issuer to recipient 1 (spend received back)"
-transfer_asset issuer/rcpt1 "$TXID_RCPT:$VOUT_RCPT" 1800/150 50/1750 0 0
-
-_tit "transferring asset from recipient 1 to recipient 2 (spend with witness UTXO)"
-transfer_asset rcpt1/rcpt2 "$TXID_RCPT:$VOUT_RCPT" 200/50 40/160 1 0
-
-_tit "checking final asset balances"
-check_balance "issuer" "1750" "usdt"
-check_balance "rcpt1" "160" "usdt"
-check_balance "rcpt2" "90" "usdt"
-check_balance "issuer" "2000" "other"
-
-_tit "sandbox run finished"
+transfer_asset rcpt1/rcpt2 "$outpoint_1" 300/0 100/200 1 0
