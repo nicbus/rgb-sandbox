@@ -1,6 +1,10 @@
 RGB Sandbox
 ===
 
+## Work in progress
+This version is not ready for public usage and is only intended as a preview
+for the upcoming version based on RGB v0.11.
+
 ## Introduction
 This is an RGB sandbox and demo based on RGB version 0.10.
 It is based on the original rgb-node demo by [St333p] (version 0.1), [grunch]'s

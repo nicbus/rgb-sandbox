@@ -1,22 +1,17 @@
-version: '3.2'
+version: '3.8'
 
 services:
-  bitcoind:
-    image: registry.gitlab.com/hashbeam/docker/bitcoind:25.0
-    command: "-fallbackfee=0.0002"
+  esplora:
+    # TODO: use a fixed known-working image instead of latest
+    image: blockstream/esplora:latest
+    command: /srv/explorer/run.sh bitcoin-regtest explorer
     environment:
-      MYUID: 1000
-      MYGID: 1000
+      DEBUG: verbose
+      NO_PRECACHE: 1
+      NO_ADDRESS_SEARCH: 1
+      NO_REGTEST_MINING: 1
     volumes:
-      - ./datacore:/srv/app/.bitcoin
-  electrs:
-    image: registry.gitlab.com/hashbeam/docker/electrs:0.9.14
-    environment:
-      MYUID: 1000
-      MYGID: 1000
-    volumes:
-      - ./dataindex:/srv/app/db
-    depends_on:
-      - bitcoind
+      - ./dataesplora:/data
     ports:
       - 50001:50001
+      - 8094:80
