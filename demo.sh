@@ -371,7 +371,7 @@ transfer_create() {
     local send_amounts="$3"     # asset amount/change for the transfer
     local witness="$4"          # 1 for witness txid, blinded UTXO otherwise
     local reuse_invoice="$5"    # 1 to re-use the previous invoice
-    NAME="${7:-"usdt"}"         # optional contract name (default: usdt)
+    NAME="${6:-"usdt"}"         # optional contract name (default: usdt)
 
     # increment transfer number
     TRANSFER_NUM=$((TRANSFER_NUM+1))
