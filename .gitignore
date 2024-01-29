@@ -1,11 +1,13 @@
 # crate install directories
-bdk-cli/
+descriptor-wallet/
 rgb-wallet/
 
 # service and client data directories
 data[0-2]/
-datacore/
-dataindex/
+dataesplora/
+
+# wallets
+wallets/
 
 # contract generated files
 contracts/*.rgb
