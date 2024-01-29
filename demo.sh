@@ -427,8 +427,8 @@ transfer_create() {
     PSBT=tx_${TRANSFER_NUM}.psbt
     _trace "${RGB[@]}" -d "$send_data" transfer -w "$SEND_WLT" \
         --method $CLOSING_METHOD \
-        "$INVOICE" $send_data/$CONSIGNMENT $send_data/$PSBT \
-        2>/dev/null
+        "$INVOICE" $send_data/$CONSIGNMENT $send_data/$PSBT #\
+        #2>/dev/null
     if ! ls "$send_data/$CONSIGNMENT" >/dev/null 2>&1; then
         _die "could not locate consignment file: $send_data/$CONSIGNMENT"
     fi
@@ -559,10 +559,10 @@ setup_rgb_clients
 _tit "issuing assets"
 get_issue_utxo
 issue_asset "usdt"
-#issue_asset "other"
+issue_asset "other"
 _tit "checking asset balances after issuance"
 check_balance "issuer" "2000" "usdt"
-#check_balance "issuer" "2000" "other"
+check_balance "issuer" "2000" "other"
 
 # export/import asset
 _tit "exporting asset"
@@ -570,39 +570,7 @@ export_asset usdt
 _tit "importing asset to recipient 1"
 import_asset usdt rcpt1
 
-# TODO: re-introduce aborted transfer + 2nd asset (blank)
 # transfer loop:
 #   1. issuer -> rcpt 1 (spend issuance)
-#     1a. only initiate tranfer, don't complete (aborted transfer)
-#     1b. retry transfer (re-using invoice) and complete it
-#   2. check asset balances (blank)
-#   3. issuer -> rcpt 1 (spend change, using witness vout)
-#   4. rcpt 1 -> rcpt 2 (spend both received allocations)
-#   5. rcpt 2 -> issuer (close loop)
-#   6. issuer -> rcpt 1 (spend received back)
 _tit "transferring asset from issuer to recipient 1 (spend issuance)"
 transfer_asset issuer/rcpt1 2000/0 100/1900 0 0
-
-#_tit "checking issuer asset balances after the 1st transfer (blank transition)"
-#check_balance "issuer" "1900" "usdt"
-#check_balance "issuer" "2000" "other"
-
-_tit "transferring asset from issuer to recipient 1 (spend change, using witness vout)"
-transfer_asset issuer/rcpt1 1900/100 200/1700 1 0
-
-_tit "transferring asset from recipient 1 to recipient 2 (spend received)"
-transfer_asset rcpt1/rcpt2 300/0 150/150 0 0
-
-_tit "transferring asset from recipient 2 to issuer (witness vout)"
-transfer_asset rcpt2/issuer 150/1700 100/50 1 0
-
-_tit "transferring asset from issuer to recipient 1 (spend received back)"
-transfer_asset issuer/rcpt1 1800/150 50/1750 0 0
-
-_tit "checking final asset balances"
-check_balance "issuer" "1750" "usdt"
-check_balance "rcpt1" "200" "usdt"
-check_balance "rcpt2" "50" "usdt"
-#check_balance "issuer" "2000" "other"
-
-_tit "sandbox run finished"
