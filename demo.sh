@@ -559,10 +559,10 @@ setup_rgb_clients
 _tit "issuing assets"
 get_issue_utxo
 issue_asset "usdt"
-#issue_asset "other"
+issue_asset "other"
 _tit "checking asset balances after issuance"
 check_balance "issuer" "2000" "usdt"
-#check_balance "issuer" "2000" "other"
+check_balance "issuer" "2000" "other"
 
 # export/import asset
 _tit "exporting asset"
@@ -583,9 +583,9 @@ import_asset usdt rcpt1
 _tit "transferring asset from issuer to recipient 1 (spend issuance)"
 transfer_asset issuer/rcpt1 2000/0 100/1900 0 0
 
-#_tit "checking issuer asset balances after the 1st transfer (blank transition)"
-#check_balance "issuer" "1900" "usdt"
-#check_balance "issuer" "2000" "other"
+_tit "checking issuer asset balances after the 1st transfer (blank transition)"
+check_balance "issuer" "1900" "usdt"
+check_balance "issuer" "2000" "other"
 
 _tit "transferring asset from issuer to recipient 1 (spend change, using witness vout)"
 transfer_asset issuer/rcpt1 1900/100 200/1700 1 0
@@ -603,6 +603,6 @@ _tit "checking final asset balances"
 check_balance "issuer" "1750" "usdt"
 check_balance "rcpt1" "200" "usdt"
 check_balance "rcpt2" "50" "usdt"
-#check_balance "issuer" "2000" "other"
+check_balance "issuer" "2000" "other"
 
 _tit "sandbox run finished"
