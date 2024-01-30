@@ -3,7 +3,6 @@
 # RGB
 CLOSING_METHOD="opret1st"
 CONTRACT_DIR="contracts"
-IFACE="RGB20"
 RGB_WALLET_VER="0.11.0-beta.3"
 TRANSFER_NUM=0
 
@@ -21,8 +20,12 @@ WALLETS=("issuer" "rcpt1" "rcpt2")
 WALLET_PATH="wallets"
 
 # maps
-declare -A CONTRACT_MAP
+declare -A CONTRACT_ID_MAP
+declare -A CONTRACT_SCHEMA_MAP
 declare -A DESC_MAP
+declare -A SCHEMA_MAP
+SCHEMA_MAP["NIA"]="RGB20"
+SCHEMA_MAP["CFA"]="RGB25"
 declare -A WLT_ID_MAP
 WLT_ID_MAP[${WALLETS[0]}]=0
 WLT_ID_MAP[${WALLETS[1]}]=1
@@ -137,9 +140,11 @@ check_balance() {
     local expected="$2"
     local contract_name="$3"
     _subtit "checking \"$contract_name\" balance for $wallet"
-    local contract_id allocations amount wallet_id
+    local contract_id allocations amount wallet_id schema iface
     wallet_id=${WLT_ID_MAP[$wallet]}
-    contract_id=${CONTRACT_MAP[$contract_name]}
+    contract_id=${CONTRACT_ID_MAP[$contract_name]}
+    schema=${CONTRACT_SCHEMA_MAP[$contract_name]}
+    iface=${SCHEMA_MAP[$schema]}
     mapfile -t outpoints < <(_trace _list_unspent "$wallet" | awk '/:[0-9]+$/ {print $NF}')
     BALANCE=0
     if [ "${#outpoints[@]}" -gt 0 ]; then
@@ -148,7 +153,7 @@ check_balance() {
             echo " - $outpoint"
         done
         mapfile -t allocations < <(_trace "${RGB[@]}" -d "data${wallet_id}" \
-            state -w "$wallet" "$contract_id" $IFACE 2>/dev/null \
+            state -w "$wallet" "$contract_id" $iface 2>/dev/null \
             | grep 'amount=' | awk -F',' '{print $1" "$2}')
         _log "allocations:"
         for allocation in "${allocations[@]}"; do
@@ -180,7 +185,7 @@ check_schemata_version() {
 
 check_tools() {
     _subtit "checking required tools"
-    local required_tools="base64 cargo cut docker grep head jq sha256sum"
+    local required_tools="awk base64 cargo cut docker grep head jq sha256sum"
     for tool in $required_tools; do
         if ! which "$tool" >/dev/null; then
             _die "could not find reruired tool \"$tool\", please install it and try again"
@@ -201,7 +206,7 @@ export_asset() {
     local contract_name="$1"
     local contract_file contract_id wallet wallet_id
     contract_file=${CONTRACT_DIR}/${contract_name}.rgb
-    contract_id=${CONTRACT_MAP[$contract_name]}
+    contract_id=${CONTRACT_ID_MAP[$contract_name]}
     wallet="issuer"
     wallet_id=${WLT_ID_MAP[$wallet]}
     _trace "${RGB[@]}" -d "data${wallet_id}" export -w "$wallet" "$contract_id" "$contract_file" 2>/dev/null
@@ -227,14 +232,17 @@ import_asset() {
 
 issue_asset() {
     local contract_name="$1"
+    local schema="$2"
     _subtit "issuing asset \"$contract_name\""
-    local contract_base contract_tmpl contract_yaml
+    local contract_base contract_tmpl contract_yaml iface schema_id
     local contract_id issuance wallet wallet_id
     wallet="issuer"
     wallet_id=${WLT_ID_MAP[$wallet]}
     contract_base=${CONTRACT_DIR}/${contract_name}
     contract_tmpl=${contract_base}.yaml.template
     contract_yaml=${contract_base}.yaml
+    iface=${SCHEMA_MAP[$schema]}
+    schema_id="$(_trace "${RGB[@]}" -d data0 schemata -w issuer | awk "/$iface/ {print \$1}")"
     sed \
         -e "s/issued_supply/2000/" \
         -e "s/created_timestamp/$(date +%s)/" \
@@ -242,12 +250,13 @@ issue_asset() {
         -e "s/txid/$TXID_ISSUE/" \
         -e "s/vout/$VOUT_ISSUE/" \
         "$contract_tmpl" > "$contract_yaml"
-    issuance="$(_trace "${RGB[@]}" -d "data${wallet_id}" issue -w "$wallet" "$SCHEMA" "$contract_yaml" 2>&1)"
+    issuance="$(_trace "${RGB[@]}" -d "data${wallet_id}" issue -w "$wallet" "$schema_id" "$contract_yaml" 2>&1)"
     contract_id="$(echo "$issuance" | grep '^A new contract' | cut -d' ' -f4)"
-    CONTRACT_MAP[$contract_name]=$contract_id
+    CONTRACT_ID_MAP[$contract_name]=$contract_id
+    CONTRACT_SCHEMA_MAP[$contract_name]=$schema
     _log "contract ID: $contract_id"
     _log "contract state after issuance"
-    _trace "${RGB[@]}" -d "data${wallet_id}" state -w "$wallet" "$contract_id" $IFACE
+    _trace "${RGB[@]}" -d "data${wallet_id}" state -w "$wallet" "$contract_id" $iface
     [ $DEBUG = 1 ] && _log "unspents after issuance" && _list_unspent "$wallet" 2>/dev/null
 }
 
@@ -305,14 +314,18 @@ setup_rgb_clients() {
     for wallet in "${WALLETS[@]}"; do
         wallet_id=${WLT_ID_MAP[$wallet]}
         _trace "${RGB[@]}" -d "data${wallet_id}" create $desc_opt "${DESC_MAP[$wallet]}" "$wallet" 2>/dev/null
+        # NIA
         _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $interface_dir/RGB20.rgb 2>/dev/null
         _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $schemata_dir/NonInflatableAssets.rgb 2>/dev/null
         _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $schemata_dir/NonInflatableAssets-RGB20.rgb 2>/dev/null
+        # CFA
+        _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $interface_dir/RGB25.rgb 2>/dev/null
+        _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $schemata_dir/CollectibleFungibleAssets.rgb 2>/dev/null
+        _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $schemata_dir/CollectibleFungibleAssets-RGB25.rgb 2>/dev/null
     done
     wallet="${WALLETS[0]}"
     wallet_id=${WLT_ID_MAP[$wallet]}
-    SCHEMA="$(_trace "${RGB[@]}" -d "data${wallet_id}" schemata -w "$wallet" 2>/dev/null | awk '{print $1}')"
-    _log "schema: $SCHEMA"
+    [ $DEBUG = 1 ] && _trace "${RGB[@]}" -d "data${wallet_id}" interfaces -w issuer 2>/dev/null
     [ $DEBUG = 1 ] && _trace "${RGB[@]}" -d "data${wallet_id}" interfaces -w issuer 2>/dev/null
 }
 
@@ -371,7 +384,7 @@ transfer_create() {
     local send_amounts="$3"     # asset amount/change for the transfer
     local witness="$4"          # 1 for witness txid, blinded UTXO otherwise
     local reuse_invoice="$5"    # 1 to re-use the previous invoice
-    NAME="${6:-"usdt"}"         # optional contract name (default: usdt)
+    NAME="$6"                   # contract name
 
     # increment transfer number
     TRANSFER_NUM=$((TRANSFER_NUM+1))
@@ -379,20 +392,23 @@ transfer_create() {
     ## data variables
     local contract_id rcpt_data rcpt_id send_data send_id
     local blnc_send blnc_rcpt send_amt send_chg
+    local schema iface
     SEND_WLT=$(echo "$wallets" |cut -d/ -f1)
     RCPT_WLT=$(echo "$wallets" |cut -d/ -f2)
     send_id=${WLT_ID_MAP[$SEND_WLT]}
     rcpt_id=${WLT_ID_MAP[$RCPT_WLT]}
-    contract_id=${CONTRACT_MAP[$NAME]}
+    contract_id=${CONTRACT_ID_MAP[$NAME]}
     send_data="data${send_id}"
     rcpt_data="data${rcpt_id}"
     send_amt=$(echo "$send_amounts" |cut -d/ -f1)
     send_chg=$(echo "$send_amounts" |cut -d/ -f2)
     blnc_send=$(echo "$balances" |cut -d/ -f1)
     blnc_rcpt=$(echo "$balances" |cut -d/ -f2)
+    schema=${CONTRACT_SCHEMA_MAP[$NAME]}
+    iface=${SCHEMA_MAP[$schema]}
 
     ## starting situation
-    _log "spending $send_amt from $SEND_WLT with $send_chg change"
+    _log "spending $send_amt of $NAME from $SEND_WLT to $RCPT_WLT with $send_chg change"
     [ $DEBUG = 1 ] && _log "sender unspents before transfer" && _list_unspent "$SEND_WLT"
     [ $DEBUG = 1 ] && _log "recipient unspents before transfer" && _list_unspent "$RCPT_WLT"
     _subtit "initial balances"
@@ -417,7 +433,7 @@ transfer_create() {
             # shellcheck disable=SC2086
             INVOICE="$(_trace "${RGB[@]}" -d "$rcpt_data" invoice \
                 $address_mode \
-                -w "$RCPT_WLT" "$contract_id" $IFACE "$send_amt" 2>/dev/null)"
+                -w "$RCPT_WLT" "$contract_id" $iface "$send_amt" 2>/dev/null)"
     fi
     _log "invoice: $INVOICE"
 
@@ -558,11 +574,11 @@ setup_rgb_clients
 # asset issuance
 _tit "issuing assets"
 get_issue_utxo
-issue_asset "usdt"
-issue_asset "other"
+issue_asset "usdt" "NIA"
+issue_asset "collectible" "CFA"
 _tit "checking asset balances after issuance"
 check_balance "issuer" "2000" "usdt"
-check_balance "issuer" "2000" "other"
+check_balance "issuer" "2000" "collectible"
 
 # export/import asset
 _tit "exporting asset"
@@ -575,34 +591,40 @@ import_asset usdt rcpt1
 #   1. issuer -> rcpt 1 (spend issuance)
 #     1a. only initiate tranfer, don't complete (aborted transfer)
 #     1b. retry transfer (re-using invoice) and complete it
-#   2. check asset balances (blank)
+#     1c. check asset balances
+#   2. issuer -> rcpt 1 (CFA)
 #   3. issuer -> rcpt 1 (spend change, using witness vout)
 #   4. rcpt 1 -> rcpt 2 (spend both received allocations)
 #   5. rcpt 2 -> issuer (close loop)
 #   6. issuer -> rcpt 1 (spend received back)
-_tit "transferring asset from issuer to recipient 1 (spend issuance)"
-transfer_asset issuer/rcpt1 2000/0 100/1900 0 0
+#     6a. check asset balances
+_tit "transferring (spend issuance)"
+transfer_asset issuer/rcpt1 2000/0 100/1900 0 0 usdt
 
-_tit "checking issuer asset balances after the 1st transfer (blank transition)"
-check_balance "issuer" "1900" "usdt"
-check_balance "issuer" "2000" "other"
+_tit "checking issuer balances after the 1st transfer (blank transition)"
+check_balance issuer 1900 usdt
+check_balance issuer 2000 collectible
 
-_tit "transferring asset from issuer to recipient 1 (spend change, using witness vout)"
-transfer_asset issuer/rcpt1 1900/100 200/1700 1 0
+_tit "transferring (CFA)"
+transfer_asset issuer/rcpt1 2000/0 200/1800 0 0 collectible
 
-_tit "transferring asset from recipient 1 to recipient 2 (spend received)"
-transfer_asset rcpt1/rcpt2 300/0 150/150 0 0
+_tit "transferring (spend change, using witness vout)"
+transfer_asset issuer/rcpt1 1900/100 200/1700 1 0 usdt
 
-_tit "transferring asset from recipient 2 to issuer (witness vout)"
-transfer_asset rcpt2/issuer 150/1700 100/50 1 0
+_tit "transferring (spend received)"
+transfer_asset rcpt1/rcpt2 300/0 150/150 0 0 usdt
 
-_tit "transferring asset from issuer to recipient 1 (spend received back)"
-transfer_asset issuer/rcpt1 1800/150 50/1750 0 0
+_tit "transferring (witness vout)"
+transfer_asset rcpt2/issuer 150/1700 100/50 1 0 usdt
 
-_tit "checking final asset balances"
-check_balance "issuer" "1750" "usdt"
-check_balance "rcpt1" "200" "usdt"
-check_balance "rcpt2" "50" "usdt"
-check_balance "issuer" "2000" "other"
+_tit "transferring (spend received back)"
+transfer_asset issuer/rcpt1 1800/150 50/1750 0 0 usdt
+
+_tit "checking final balances"
+check_balance issuer 1750 usdt
+check_balance rcpt1 200 usdt
+check_balance rcpt2 50 usdt
+check_balance issuer 1800 collectible
+check_balance rcpt1 200 collectible
 
 _tit "sandbox run finished"

@@ -1,14 +1,11 @@
-interface: RGB20
+interface: RGB25
 
 globals:
-  spec:
-    naming:
-      ticker: OTHER
-      name: Other asset
-      details: ~
-    precision: 0
+  name: Other asset
+  details: Asset description
+  precision: 0
   data:
-    terms: demo RGB20 asset
+    terms: demo CFA asset
     media: ~
   issuedSupply: issued_supply
   created: created_timestamp
