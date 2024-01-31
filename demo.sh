@@ -565,7 +565,7 @@ check_tools
 check_schemata_version
 set_aliases
 install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES" "--git https://github.com/BP-WG/descriptor-wallet --branch master --debug"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --branch v0.11"
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/nicbus/rgb --branch v0.11-fixed_blank"
 #trap cleanup EXIT
 start_services
 prepare_wallets
