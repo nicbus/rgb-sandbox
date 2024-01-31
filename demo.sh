@@ -491,7 +491,7 @@ transfer_complete() {
     local signing tx txid
     signing="$(_trace "${BTCHOT[@]}" sign -p '' \
         $send_data/$PSBT "$WALLET_PATH/$SEND_WLT.derive")"
-    if ! echo "$signing" | grep -q 'Done 1 signatures'; then
+    if ! echo "$signing" | grep -q 'Done [1-9] signatures'; then
         _die "signing failed"
     fi
     _subtit "(sender) finalizing PSBT"
