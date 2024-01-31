@@ -443,8 +443,8 @@ transfer_create() {
     PSBT=tx_${TRANSFER_NUM}.psbt
     _trace "${RGB[@]}" -d "$send_data" transfer -w "$SEND_WLT" \
         --method $CLOSING_METHOD \
-        "$INVOICE" $send_data/$CONSIGNMENT $send_data/$PSBT \
-        2>/dev/null
+        "$INVOICE" $send_data/$CONSIGNMENT $send_data/$PSBT #\
+        #2>/dev/null
     if ! ls "$send_data/$CONSIGNMENT" >/dev/null 2>&1; then
         _die "could not locate consignment file: $send_data/$CONSIGNMENT"
     fi
@@ -565,7 +565,7 @@ check_tools
 check_schemata_version
 set_aliases
 install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES" "--git https://github.com/BP-WG/descriptor-wallet --branch master --debug"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --branch v0.11"
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/nicbus/rgb --branch v0.11-fixed_blank"
 #trap cleanup EXIT
 start_services
 prepare_wallets
