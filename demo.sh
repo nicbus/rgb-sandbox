@@ -441,8 +441,10 @@ transfer_create() {
     _subtit "(sender) preparing RGB transfer"
     CONSIGNMENT="consignment_${TRANSFER_NUM}.rgb"
     PSBT=tx_${TRANSFER_NUM}.psbt
+    local sats=(--sats 2000)
+    [ -n "$SATS" ] && sats=(--sats "$SATS")
     _trace "${RGB[@]}" -d "$send_data" transfer -w "$SEND_WLT" \
-        --method $CLOSING_METHOD \
+        --method $CLOSING_METHOD "${sats[@]}" \
         "$INVOICE" $send_data/$CONSIGNMENT $send_data/$PSBT #\
         #2>/dev/null
     if ! ls "$send_data/$CONSIGNMENT" >/dev/null 2>&1; then
