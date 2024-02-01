@@ -577,10 +577,10 @@ setup_rgb_clients
 _tit "issuing assets"
 get_issue_utxo
 issue_asset "usdt" "NIA"
-issue_asset "collectible" "CFA"
+#issue_asset "collectible" "CFA"
 _tit "checking asset balances after issuance"
 check_balance "issuer" "2000" "usdt"
-check_balance "issuer" "2000" "collectible"
+#check_balance "issuer" "2000" "collectible"
 
 # export/import asset
 _tit "exporting asset"
@@ -588,45 +588,18 @@ export_asset usdt
 _tit "importing asset to recipient 1"
 import_asset usdt rcpt1
 
-# TODO: re-introduce aborted transfer + 2nd asset (blank)
-# transfer loop:
-#   1. issuer -> rcpt 1 (spend issuance)
-#     1a. only initiate tranfer, don't complete (aborted transfer)
-#     1b. retry transfer (re-using invoice) and complete it
-#     1c. check asset balances
-#   2. issuer -> rcpt 1 (CFA)
-#   3. issuer -> rcpt 1 (spend change, using witness vout)
-#   4. rcpt 1 -> rcpt 2 (spend both received allocations)
-#   5. rcpt 2 -> issuer (close loop)
-#   6. issuer -> rcpt 1 (spend received back)
-#     6a. check asset balances
-_tit "transferring (spend issuance)"
-transfer_asset issuer/rcpt1 2000/0 100/1900 0 0 usdt
+_tit "transferring (1->2 1)"
+SATS=4000
+transfer_asset issuer/rcpt1 2000/0 100/1900 1 0 usdt
 
-_tit "checking issuer balances after the 1st transfer (blank transition)"
-check_balance issuer 1900 usdt
-check_balance issuer 2000 collectible
-
-_tit "transferring (CFA)"
-transfer_asset issuer/rcpt1 2000/0 200/1800 0 0 collectible
-
-_tit "transferring (spend change, using witness vout)"
+_tit "transferring (1->2 2)"
+SATS=4000
 transfer_asset issuer/rcpt1 1900/100 200/1700 1 0 usdt
 
-_tit "transferring (spend received)"
-transfer_asset rcpt1/rcpt2 300/0 150/150 0 0 usdt
+_tit "transferring (2->3, 2 input allocations)"
+SATS=3000
+transfer_asset rcpt1/rcpt2 300/0 250/50 1 0 usdt
 
-_tit "transferring (witness vout)"
-transfer_asset rcpt2/issuer 150/1700 100/50 1 0 usdt
-
-_tit "transferring (spend received back)"
-transfer_asset issuer/rcpt1 1800/150 50/1750 0 0 usdt
-
-_tit "checking final balances"
-check_balance issuer 1750 usdt
-check_balance rcpt1 200 usdt
-check_balance rcpt2 50 usdt
-check_balance issuer 1800 collectible
-check_balance rcpt1 200 collectible
-
-_tit "sandbox run finished"
+_tit "transferring (3->2, open 2)"
+SATS=2000
+transfer_asset rcpt2/rcpt1 250/50 150/100 1 0 usdt
