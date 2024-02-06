@@ -76,7 +76,7 @@ _gen_addr_rgb() {
     local wallet="$1"
     _log "generating new address for wallet \"$wallet\""
     local wallet_id=${WLT_ID_MAP[$wallet]}
-    ADDR="$(_trace "${RGB[@]}" -d "data${wallet_id}" address -w "$wallet" 2>/dev/null \
+    ADDR="$(_trace "${RGB[@]}" -d "data${wallet_id}" address -w "$wallet" -k 9 2>/dev/null \
         | awk '/bcrt/ {print $NF}')"
     _log "generated address: $ADDR"
 }
@@ -429,11 +429,11 @@ transfer_create() {
             _gen_utxo "$RCPT_WLT"
             address_mode=""
         fi
-            # not quoting $address_mode so it doesn't get passed as "" if empty
-            # shellcheck disable=SC2086
-            INVOICE="$(_trace "${RGB[@]}" -d "$rcpt_data" invoice \
-                $address_mode \
-                -w "$RCPT_WLT" "$contract_id" $iface "$send_amt" 2>/dev/null)"
+        # not quoting $address_mode so it doesn't get passed as "" if empty
+        # shellcheck disable=SC2086
+        INVOICE="$(_trace "${RGB[@]}" -d "$rcpt_data" invoice \
+            $address_mode \
+            -w "$RCPT_WLT" "$contract_id" $iface "$send_amt" 2>/dev/null)"
     fi
     _log "invoice: $INVOICE"
 
