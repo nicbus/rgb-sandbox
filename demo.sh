@@ -426,7 +426,7 @@ transfer_create() {
         if [ "$witness" = 1 ]; then
             address_mode="-a"
         else
-            _gen_utxo "$RCPT_WLT"
+            [ "$NO_GEN_UTXO" != 1 ] && _gen_utxo "$RCPT_WLT"
             address_mode=""
         fi
         # not quoting $address_mode so it doesn't get passed as "" if empty
@@ -591,6 +591,10 @@ export_asset usdt
 _tit "importing asset to recipient 1"
 import_asset usdt rcpt1
 
+# generate an UTXO for the recipient wallet before saving the blockchain state
+_tit "generating an UTXO for the recipient wallet"
+_gen_utxo "rcpt1"
+
 # save current issuer + chain data
 _tit "saving issuer + chain data"
 _subtit "stopping esplora services"
@@ -599,9 +603,7 @@ for SRV in nginx tor socat websocket prerenderer electrs bitcoin; do
 done
 docker compose down
 _subtit "saving current data"
-rm -fr data0.1
 docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataesplora.1"
-cp -a data0{,.1}
 docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "cp -a /data/dataesplora{,.1}"
 _subtit "restarting services"
 docker compose up -d
@@ -616,7 +618,9 @@ _wait_esplora_sync
 
 # transfer a 1st time
 _tit "transferring (1st)"
+NO_GEN_UTXO=1  # already generated before saving blockchain state
 transfer_asset issuer/rcpt1 2000/0 100/1900 0 0 usdt
+unset NO_GEN_UTXO
 
 # restore previous issuer data
 _tit "restoring issuer + chain data"
@@ -626,9 +630,7 @@ for SRV in nginx tor socat websocket prerenderer electrs bitcoin; do
 done
 docker compose down
 _subtit "restoring previous data"
-rm -fr data0
 docker run --rm -v "$(pwd)/:/data" debian:bookworm bash -c "rm -rf /data/dataesplora"
-mv data0{.1,}
 docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "mv /data/dataesplora{.1,}"
 _subtit "restarting services"
 docker compose up -d
@@ -641,8 +643,17 @@ echo " done"
 "${BCLI[@]}" loadwallet miner   # load bitcoind wallet
 _wait_esplora_sync
 
-# make the same transfer a 2nd time, using the same invoic, and check it's accepted with no issues
+# sync the wallets after restoring the previous blockchain state
+_tit "syncing wallets"
+_sync_wallet issuer
+_sync_wallet rcpt1
+
+# pay same invoice again, and check it's accepted with no issues
 _tit "transferring (2nd)"
-CUSTOM_BLNC_RCPT=100    # custom final recipient balance, as it doesn't change with this transfer
-# 2000/100 (expected initial recipient balance 100) as rcpt1 already sees the previous allocation
+# final balance should remain unchanged but instead it doubles
 transfer_asset issuer/rcpt1 2000/100 100/1900 0 1 usdt
+
+# this transfer is expected to fail as one of the 2 allocations cannot be validated
+_tit "transferring (3rd)"
+# starting balance double the expected, spending should fail validation
+transfer_asset rcpt1/rcpt2 200/0 150/50 0 0 usdt
