@@ -14,6 +14,7 @@ OPRET_KEYCHAIN="<0;1;9>"
 TAPRET_KEYCHAIN="<0;1;9;10>"
 KEYCHAIN=$OPRET_KEYCHAIN
 DER_SCHEME="bip84"
+ELECTRUM_PORT=50001
 ESPLORA_ENDPOINT="http://localhost:8094/regtest/api"
 NETWORK="regtest"
 WALLETS=("issuer" "rcpt1" "rcpt2")
@@ -86,23 +87,33 @@ _gen_addr_rgb() {
     _log "generated address: $ADDR"
 }
 
-_wait_esplora_sync() {
-    echo -n "waiting for esplora to have synced"
-    bitcoind_height=$("${BCLI[@]}" getblockcount)
+_wait_indexers_sync() {
+    echo -n "waiting for indexers to have synced"
+    local bitcoind_bc esplora_bc max_bc
+    local all_synced electrum_json electrum_res esplora_height
+    bitcoind_bc=$("${BCLI[@]}" getblockcount)
+    esplora_bc=$("${ECLI[@]}" getblockcount)
+    max_bc=$(( bitcoind_bc >= esplora_bc ? bitcoind_bc : esplora_bc ))
+    # shellcheck disable=2089
+    electrum_json="{\"jsonrpc\": \"2.0\", \"method\": \"blockchain.block.header\", \"params\": [$max_bc], \"id\": 0}"
     while :; do
+        all_synced=1
+        electrum_res="$(echo "$electrum_json" | netcat -N localhost $ELECTRUM_PORT | jq '.result')"
         esplora_height=$(curl -s $ESPLORA_ENDPOINT/blocks/tip/height)
-        [ "$bitcoind_height" == "$esplora_height" ] && break
+        [ -n "$electrum_res" ] || all_synced=0
+        [ "$max_bc" == "$esplora_height" ] || all_synced=0
+        [ $all_synced = 1 ] && break
         echo -n "."
         sleep 1
     done
-    echo "synced"
+    echo " done"
 }
 
 _gen_blocks() {
     local count="$1"
     _log "mining $count block(s)"
     _trace "${BCLI[@]}" -rpcwallet=miner -generate "$count" >/dev/null
-    _wait_esplora_sync
+    _wait_indexers_sync
 }
 
 _gen_utxo() {
@@ -192,7 +203,7 @@ check_schemata_version() {
 
 check_tools() {
     _subtit "checking required tools"
-    local required_tools="awk base64 cargo cut docker grep head jq sha256sum"
+    local required_tools="awk base64 cargo cut docker grep head jq netcat sha256sum"
     for tool in $required_tools; do
         if ! which "$tool" >/dev/null; then
             _die "could not find reruired tool \"$tool\", please install it and try again"
@@ -305,9 +316,10 @@ prepare_wallets() {
 # shellcheck disable=2034
 set_aliases() {
     _subtit "setting command aliases"
-    BCLI=("docker" "compose" "exec" "-T" "esplora" "cli")
+    BCLI=("docker" "compose" "exec" "-T" "-u" "blits" "bitcoind" "bitcoin-cli" "-regtest")
     BTCHOT=("descriptor-wallet/bin/btc-hot")
     BTCCOLD=("descriptor-wallet/bin/btc-cold")
+    ECLI=("docker" "compose" "exec" "-T" "esplora" "cli")
     RGB=("rgb-wallet/bin/rgb" "-n" "$NETWORK" "-e" "$ESPLORA_ENDPOINT")
 }
 
@@ -374,16 +386,31 @@ start_services() {
             _die "port $port is already bound, services can't be started"
         fi
     done
-    _subtit "cleaning esplora data dir"
+    _subtit "cleaning service data dirs"
+    for d in datacore dataelectrs; do
+        if [ -d "$d" ]; then
+            rm -r $d
+            mkdir -p $d
+        fi
+    done
     if [ -d "dataesplora" ]; then
         docker compose run --rm esplora bash -c "rm -r /data/.bitcoin.conf /data/*"
     fi
     _subtit "starting services"
     docker compose up -d
-    # wait for services to start
+    echo -n "waiting for services to have started..."
+    # bitcoind
+    until docker compose logs bitcoind |grep -q 'Bound to'; do
+        sleep 1
+    done
+    # esplora
     until docker compose logs esplora |grep -q 'waiting for bitcoind sync to finish'; do
         sleep 1
     done
+    echo " done"
+    # connecting bitcoind nodes
+    "${BCLI[@]}" addnode "esplora:18444" "onetry"
+    "${ECLI[@]}" addnode "bitcoind:18444" "onetry"
 }
 
 transfer_asset() {
@@ -447,7 +474,7 @@ transfer_create() {
             address_mode=""
         fi
         # not quoting $address_mode so it doesn't get passed as "" if empty
-        # shellcheck disable=SC2086
+        # shellcheck disable=2086
         INVOICE="$(_trace "${RGB[@]}" -d "$rcpt_data" invoice \
             $address_mode \
             -w "$RCPT_WLT" "$contract_id" $iface "$send_amt" 2>/dev/null)"
