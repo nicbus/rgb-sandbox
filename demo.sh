@@ -15,7 +15,10 @@ TAPRET_KEYCHAIN="<0;1;9;10>"
 KEYCHAIN=$OPRET_KEYCHAIN
 DER_SCHEME="bip84"
 ELECTRUM_PORT=50001
+ELECTRUM_ENDPOINT="http://localhost:$ELECTRUM_PORT"
 ESPLORA_ENDPOINT="http://localhost:8094/regtest/api"
+INDEXER_CLI="--electrum"
+INDEXER_ENDPOINT=$ELECTRUM_ENDPOINT
 NETWORK="regtest"
 WALLETS=("issuer" "rcpt1" "rcpt2")
 WALLET_PATH="wallets"
@@ -320,7 +323,7 @@ set_aliases() {
     BTCHOT=("descriptor-wallet/bin/btc-hot")
     BTCCOLD=("descriptor-wallet/bin/btc-cold")
     ECLI=("docker" "compose" "exec" "-T" "esplora" "cli")
-    RGB=("rgb-wallet/bin/rgb" "-n" "$NETWORK" "-e" "$ESPLORA_ENDPOINT")
+    RGB=("rgb-wallet/bin/rgb" "-n" "$NETWORK" "$INDEXER_CLI" "$INDEXER_ENDPOINT")
 }
 
 setup_rgb_clients() {
@@ -579,6 +582,7 @@ help() {
     echo "    -h --help     show this help message"
     echo "    -t --tapret   user tapret1st closing method"
     echo "    -v --verbose  enable verbose output"
+    echo "       --esplora  use esplora as indexer (default: electrum)"
 }
 
 
@@ -596,6 +600,10 @@ while [ -n "$1" ]; do
             ;;
         -v|--verbose)
             DEBUG=1
+            ;;
+        --esplora)
+            INDEXER_CLI="--esplora"
+            INDEXER_ENDPOINT=$ESPLORA_ENDPOINT
             ;;
         *)
             help
