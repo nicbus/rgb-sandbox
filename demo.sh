@@ -595,8 +595,8 @@ import_asset usdt rcpt1
 _tit "generating an UTXO for the recipient wallet"
 _gen_utxo "rcpt1"
 
-# save current issuer + chain data
-_tit "saving issuer + chain data"
+# save current data
+_tit "saving chain data"
 _subtit "stopping esplora services"
 for SRV in nginx tor socat websocket prerenderer electrs bitcoin; do
     docker compose exec esplora bash -c "sv stop /etc/service/$SRV"
@@ -622,8 +622,8 @@ NO_GEN_UTXO=1  # already generated before saving blockchain state
 transfer_asset issuer/rcpt1 2000/0 100/1900 0 0 usdt
 unset NO_GEN_UTXO
 
-# restore previous issuer data
-_tit "restoring issuer + chain data"
+# restore previous data
+_tit "restoring chain data"
 _subtit "stopping esplora services"
 for SRV in nginx tor socat websocket prerenderer electrs bitcoin; do
     docker compose exec esplora bash -c "sv stop /etc/service/$SRV"
