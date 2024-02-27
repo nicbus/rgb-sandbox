@@ -426,7 +426,9 @@ transfer_create() {
         if [ "$witness" = 1 ]; then
             address_mode="-a"
         else
-            _gen_utxo "$RCPT_WLT"
+            if [ "$SKIP_GEN_UTXO" != 1 ]; then
+                _gen_utxo "$RCPT_WLT"
+            fi
             address_mode=""
         fi
         # not quoting $address_mode so it doesn't get passed as "" if empty
@@ -589,9 +591,10 @@ import_asset usdt rcpt1
 _tit "transferring (spend issuance)"
 transfer_asset issuer/rcpt1 2000/0 100/1900 0 0 usdt
 
-_tit "transferring (spend change, using witness vout)"
-#transfer_asset issuer/rcpt1 1900/100 200/1700 1 0 usdt
+_tit "transferring (spend change)"
+SKIP_GEN_UTXO=1
 transfer_asset issuer/rcpt1 1900/100 200/1700 0 0 usdt
+unset SKIP_GEN_UTXO
 
 _tit "transferring (spend received)"
 transfer_asset rcpt1/rcpt2 300/0 250/50 0 0 usdt
