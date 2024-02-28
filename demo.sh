@@ -71,9 +71,10 @@ _trace() {
 # internal functions
 _gen_addr_rgb() {
     local wallet="$1"
+    local keychain="$2"
     _log "generating new address for wallet \"$wallet\""
     local wallet_id=${WLT_ID_MAP[$wallet]}
-    ADDR="$(_trace "${RGB[@]}" -d "data${wallet_id}" address -w "$wallet" 2>/dev/null \
+    ADDR="$(_trace "${RGB[@]}" -d "data${wallet_id}" address -w "$wallet" -k "$keychain" 2>/dev/null \
         | awk '/bcrt/ {print $NF}')"
     _log "generated address: $ADDR"
 }
@@ -99,8 +100,9 @@ _gen_blocks() {
 
 _gen_utxo() {
     local wallet="$1"
-    _gen_addr_rgb "$wallet"
-    _log "sending funds to wallet \"$wallet\""
+    local keychain="${2:-9}"
+    _gen_addr_rgb "$wallet" "$keychain"
+    _log "sending funds to wallet \"$wallet\" on keychain \"$keychain\""
     txid="$(_trace "${BCLI[@]}" -rpcwallet=miner sendtoaddress "$ADDR" 1)"
     _gen_blocks 1
     _sync_wallet "$wallet"
@@ -413,11 +415,11 @@ transfer_create() {
             _gen_utxo "$RCPT_WLT"
             address_mode=""
         fi
-            # not quoting $address_mode so it doesn't get passed as "" if empty
-            # shellcheck disable=SC2086
-            INVOICE="$(_trace "${RGB[@]}" -d "$rcpt_data" invoice \
-                $address_mode \
-                -w "$RCPT_WLT" "$contract_id" $IFACE "$send_amt" 2>/dev/null)"
+        # not quoting $address_mode so it doesn't get passed as "" if empty
+        # shellcheck disable=SC2086
+        INVOICE="$(_trace "${RGB[@]}" -d "$rcpt_data" invoice \
+            $address_mode \
+            -w "$RCPT_WLT" "$contract_id" $IFACE "$send_amt" 2>/dev/null)"
     fi
     _log "invoice: $INVOICE"
 
