@@ -576,13 +576,11 @@ import_asset usdt rcpt1
 #   1. issuer -> rcpt 1 (spend issuance)
 #   2. issuer -> rcpt 1 (spend change, using witness vout)
 #   3. rcpt 1 -> rcpt 2 (spend received allocations)
-_tit "transferring asset from issuer to recipient 1 (spend issuance)"
-transfer_asset issuer/rcpt1 2000/0 100/1900 0 0
+_tit "transferring asset from issuer to recipient 1 (spend issuance, witness)"
+transfer_asset issuer/rcpt1 2000/0 100/1900 1 0
 
-_tit "transferring asset from issuer to recipient 1 (spend change, using witness vout)"
-transfer_asset issuer/rcpt1 1900/100 200/1700 1 0
-
-_tit "transferring asset from recipient 1 to recipient 2 (spend received)"
-transfer_asset rcpt1/rcpt2 300/0 150/150 0 0
+_tit "transferr9ing asset from recipient 1 to recipient 2 (spend received, witness)"
+_gen_utxo "rcpt1" "0"  # add bitcoins on keychain 0 to cover fees
+transfer_asset rcpt1/rcpt2 100/0 50/50 1 0
 
 _tit "sandbox run finished"
