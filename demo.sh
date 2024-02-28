@@ -4,7 +4,7 @@
 CLOSING_METHOD="opret1st"
 CONTRACT_DIR="contracts"
 IFACE="RGB20"
-RGB_WALLET_VER="0.11.0-beta.3"
+RGB_WALLET_VER="0.11.0-beta.4"
 TRANSFER_NUM=0
 
 # wallet and network
@@ -549,7 +549,7 @@ check_tools
 check_schemata_version
 set_aliases
 install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES" "--git https://github.com/BP-WG/descriptor-wallet --branch master --debug"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --branch v0.11"
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/nicbus/rgb --branch v0.11_bp-wallet_17"
 #trap cleanup EXIT
 start_services
 prepare_wallets
