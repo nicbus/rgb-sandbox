@@ -13,9 +13,10 @@ DESCRIPTOR_WALLET_VER="0.10.1"
 OPRET_KEYCHAIN="<0;1;9>"
 TAPRET_KEYCHAIN="<0;1;9;10>"
 KEYCHAIN=$OPRET_KEYCHAIN
+DER_KEYCHAIN=9
 DER_SCHEME="bip84"
 ELECTRUM_PORT=50001
-ELECTRUM_ENDPOINT="http://localhost:$ELECTRUM_PORT"
+ELECTRUM_ENDPOINT="localhost:$ELECTRUM_PORT"
 ESPLORA_ENDPOINT="http://localhost:8094/regtest/api"
 INDEXER_CLI="--electrum"
 INDEXER_ENDPOINT=$ELECTRUM_ENDPOINT
@@ -85,7 +86,7 @@ _gen_addr_rgb() {
     local keychain="$2"
     _log "generating new address for wallet \"$wallet\""
     local wallet_id=${WLT_ID_MAP[$wallet]}
-    ADDR="$(_trace "${RGB[@]}" -d "data${wallet_id}" address -w "$wallet" -k 9 2>/dev/null \
+    ADDR="$(_trace "${RGB[@]}" -d "data${wallet_id}" address -w "$wallet" -k $DER_KEYCHAIN 2>/dev/null \
         | awk '/bcrt/ {print $NF}')"
     _log "generated address: $ADDR"
 }
@@ -596,6 +597,7 @@ while [ -n "$1" ]; do
         -t|--tapret)
             CLOSING_METHOD="tapret1st"
             KEYCHAIN=$TAPRET_KEYCHAIN
+            DER_KEYCHAIN=10
             DER_SCHEME="bip86"
             ;;
         -v|--verbose)
