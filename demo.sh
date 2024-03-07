@@ -20,6 +20,7 @@ ELECTRUM_ENDPOINT="localhost:$ELECTRUM_PORT"
 ESPLORA_ENDPOINT="http://localhost:8094/regtest/api"
 INDEXER_CLI="--electrum"
 INDEXER_ENDPOINT=$ELECTRUM_ENDPOINT
+PROFILE="electrum"
 NETWORK="regtest"
 WALLETS=("issuer" "rcpt1" "rcpt2")
 WALLET_PATH="wallets"
@@ -92,24 +93,31 @@ _gen_addr_rgb() {
 }
 
 _wait_indexers_sync() {
-    echo -n "waiting for indexers to have synced"
-    local bitcoind_bc esplora_bc max_bc
-    local all_synced electrum_json electrum_res esplora_height
-    bitcoind_bc=$("${BCLI[@]}" getblockcount)
-    esplora_bc=$("${ECLI[@]}" getblockcount)
-    max_bc=$(( bitcoind_bc >= esplora_bc ? bitcoind_bc : esplora_bc ))
-    # shellcheck disable=2089
-    electrum_json="{\"jsonrpc\": \"2.0\", \"method\": \"blockchain.block.header\", \"params\": [$max_bc], \"id\": 0}"
-    while :; do
-        all_synced=1
-        electrum_res="$(echo "$electrum_json" | netcat -N localhost $ELECTRUM_PORT | jq '.result')"
-        esplora_height=$(curl -s $ESPLORA_ENDPOINT/blocks/tip/height)
-        [ -n "$electrum_res" ] || all_synced=0
-        [ "$max_bc" == "$esplora_height" ] || all_synced=0
-        [ $all_synced = 1 ] && break
-        echo -n "."
-        sleep 1
-    done
+    echo -n "waiting for indexer to have synced"
+    local block_count
+    block_count=$("${BCLI[@]}" getblockcount)
+    if [ "$PROFILE" = "electrum" ]; then
+        local electrum_json electrum_res
+        # shellcheck disable=2089
+        electrum_json="{\"jsonrpc\": \"2.0\", \"method\": \"blockchain.block.header\", \"params\": [$block_count], \"id\": 0}"
+        while :; do
+            electrum_res="$(echo "$electrum_json" \
+                | netcat -N localhost $ELECTRUM_PORT \
+                | jq '.result')"
+            [ -n "$electrum_res" ] && break
+            echo -n "."
+            sleep 1
+        done
+    fi
+    if [ "$PROFILE" = "esplora" ]; then
+        local esplora_height
+        while :; do
+            esplora_height=$(curl -s $ESPLORA_ENDPOINT/blocks/tip/height)
+            [ "$block_count" == "$esplora_height" ] && break
+            echo -n "."
+            sleep 1
+        done
+    fi
     echo " done"
 }
 
@@ -320,11 +328,16 @@ prepare_wallets() {
 # shellcheck disable=2034
 set_aliases() {
     _subtit "setting command aliases"
-    BCLI=("docker" "compose" "exec" "-T" "-u" "blits" "bitcoind" "bitcoin-cli" "-regtest")
+    BITCOIND_CLI=("docker" "compose" "exec" "-T" "-u" "blits" "bitcoind" "bitcoin-cli" "-regtest")
     BTCHOT=("descriptor-wallet/bin/btc-hot")
     BTCCOLD=("descriptor-wallet/bin/btc-cold")
-    ECLI=("docker" "compose" "exec" "-T" "esplora" "cli")
+    ESPLORA_CLI=("docker" "compose" "exec" "-T" "esplora" "cli")
     RGB=("rgb-wallet/bin/rgb" "-n" "$NETWORK" "$INDEXER_CLI" "$INDEXER_ENDPOINT")
+    if [ "$PROFILE" = "electrum" ]; then
+        BCLI=("${BITCOIND_CLI[@]}")
+    else
+        BCLI=("${ESPLORA_CLI[@]}")
+    fi
 }
 
 setup_rgb_clients() {
@@ -377,14 +390,15 @@ start_services() {
        mkdir -p "$data_dir"
     done
     _subtit "stopping services"
-    docker compose down -v
+    docker compose --profile '*' down --remove-orphans -v
     _subtit "checking bound ports"
     if ! which ss >/dev/null; then
         _log "ss not available, skipping bound ports check"
         return
     fi
     # see docker-compose.yml for the exposed ports
-    EXPOSED_PORTS=(8094 50001)
+    [ "$PROFILE" = "electrum" ] && EXPOSED_PORTS=(50001)
+    [ "$PROFILE" = "esplora" ] && EXPOSED_PORTS=(8094)
     for port in "${EXPOSED_PORTS[@]}"; do
         if [ -n "$(ss -HOlnt "sport = :$port")" ];then
             _die "port $port is already bound, services can't be started"
@@ -401,20 +415,21 @@ start_services() {
         docker compose run --rm esplora bash -c "rm -r /data/.bitcoin.conf /data/*"
     fi
     _subtit "starting services"
-    docker compose up -d
+    docker compose --profile $PROFILE up -d
     echo -n "waiting for services to have started..."
-    # bitcoind
-    until docker compose logs bitcoind |grep -q 'Bound to'; do
-        sleep 1
-    done
-    # esplora
-    until docker compose logs esplora |grep -q 'waiting for bitcoind sync to finish'; do
-        sleep 1
-    done
+    if [ "$PROFILE" = "electrum" ]; then
+        # bitcoind
+        until docker compose logs bitcoind |grep -q 'Bound to'; do
+            sleep 1
+        done
+    fi
+    if [ "$PROFILE" = "esplora" ]; then
+        # esplora
+        until docker compose logs esplora |grep -q 'waiting for bitcoind sync to finish'; do
+            sleep 1
+        done
+    fi
     echo " done"
-    # connecting bitcoind nodes
-    "${BCLI[@]}" addnode "esplora:18444" "onetry"
-    "${ECLI[@]}" addnode "bitcoind:18444" "onetry"
 }
 
 transfer_asset() {
@@ -606,6 +621,7 @@ while [ -n "$1" ]; do
         --esplora)
             INDEXER_CLI="--esplora"
             INDEXER_ENDPOINT=$ESPLORA_ENDPOINT
+            PROFILE="esplora"
             ;;
         *)
             help

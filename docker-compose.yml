@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   bitcoind:
+    profiles: [electrum]
     image: registry.gitlab.com/hashbeam/docker/bitcoind:25.0
     command: "-fallbackfee=0.0002"
     environment:
@@ -10,6 +11,7 @@ services:
     volumes:
       - ./datacore:/srv/app/.bitcoin
   electrs:
+    profiles: [electrum]
     image: registry.gitlab.com/hashbeam/docker/electrs:0.9.14
     environment:
       MYUID: 1000
@@ -21,6 +23,7 @@ services:
     ports:
       - 50001:50001
   esplora:
+    profiles: [esplora]
     image: blockstream/esplora:956c74f42eb6ad803d8aedc272ba83d3aa6dcf5c
     command: /srv/explorer/run.sh bitcoin-regtest explorer
     environment:
