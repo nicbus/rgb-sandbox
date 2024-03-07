@@ -281,6 +281,7 @@ issue_asset() {
         -e "s/vout/$VOUT_ISSUE/" \
         "$contract_tmpl" > "$contract_yaml"
     issuance="$(_trace "${RGB[@]}" -d "data${wallet_id}" issue -w "$wallet" "$schema_id" "$contract_yaml" 2>&1)"
+    _log "$issuance"
     contract_id="$(echo "$issuance" | grep '^A new contract' | cut -d' ' -f4)"
     CONTRACT_ID_MAP[$contract_name]=$contract_id
     CONTRACT_SCHEMA_MAP[$contract_name]=$schema
