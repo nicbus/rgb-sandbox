@@ -294,6 +294,7 @@ issue_asset() {
 install_rust_crate() {
     local crate="$1"
     local version="$2"
+    local features opts
     if [ -n "$3" ]; then
         read -r -a features <<< "$3"
     fi
