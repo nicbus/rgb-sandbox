@@ -532,9 +532,9 @@ transfer_create() {
     _subtit "(sender) copying consignment to recipient data directory"
     _trace cp {"$send_data","$rcpt_data"}/"$CONSIGNMENT"
     # inspect consignment (output to file as it's very big)
-    _trace "${RGB[@]}" -d "$send_data" inspect -f debug \
-        "$send_data/$CONSIGNMENT" 2>/dev/null > "$CONSIGNMENT.inspect"
-    _log "consignment inspect logged to file: $CONSIGNMENT.inspect"
+    _trace "${RGB[@]}" -d "$send_data" inspect \
+        "$send_data/$CONSIGNMENT" "$CONSIGNMENT.yaml"
+    _log "consignment exported to file: $CONSIGNMENT.yaml"
 }
 
 transfer_complete() {
