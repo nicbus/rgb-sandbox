@@ -9,7 +9,7 @@ TRANSFER_NUM=0
 # wallet and network
 DESCRIPTOR_WALLET_FEATURES="--features cli,hot"
 RGB_WALLET_FEATURES=""
-DESCRIPTOR_WALLET_VER="0.10.1"
+DESCRIPTOR_WALLET_VER="0.10.2"
 OPRET_KEYCHAIN="<0;1;9>"
 TAPRET_KEYCHAIN="<0;1;9;10>"
 KEYCHAIN=$OPRET_KEYCHAIN
@@ -638,8 +638,8 @@ _tit "setting up"
 check_tools
 check_schemata_version
 set_aliases
-install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES" "--git https://github.com/BP-WG/descriptor-wallet --branch master --debug"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/nicbus/rgb --branch cli_electrum"
+install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES"
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --branch master"
 #trap cleanup EXIT
 start_services
 prepare_wallets
