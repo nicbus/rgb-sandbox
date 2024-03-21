@@ -661,39 +661,38 @@ _tit "importing asset to recipient 1"
 import_asset usdt rcpt1
 
 # transfer loop:
-#   1. issuer -> rcpt 1 (spend issuance)
-#     1a. only initiate tranfer, don't complete (aborted transfer)
-#     1b. retry transfer (re-using invoice) and complete it
-#     1c. check asset balances
-#   2. issuer -> rcpt 1 (CFA)
-#   3. issuer -> rcpt 1 (spend change, using witness vout)
-#   4. rcpt 1 -> rcpt 2 (spend both received allocations)
-#   5. rcpt 2 -> issuer (close loop)
-#   6. issuer -> rcpt 1 (spend received back)
-#     6a. check asset balances
-_tit "creating transfer (spend issuance) but not completing it"
+#   - issuer -> rcpt 1 (spend issuance, initiate only)  # simulate aborted transfer
+#   - issuer -> rcpt 1 (spend issuance, complete)       # simulate retry transfer
+#   - check issuer asset balances                       # make sure blank transition worked
+#   - issuer -> rcpt 1 (CFA)
+#   - issuer -> rcpt 1 (spend change, witness)
+#   - rcpt 1 -> rcpt 2 (spend both received allocations)
+#   - rcpt 2 -> issuer (close loop, witness)
+#   - issuer -> rcpt 1 (spend received back)
+#   - check asset balances
+_tit "issuer -> rcpt 1 (spend issuance, initiate only)"
 transfer_create issuer/rcpt1 2000/0 100/1900 0 0 usdt
 
-_tit "re-transferring (spend issuance) re-using the same invoice"
+_tit "issuer -> rcpt 1 (spend issuance, complete)"
 transfer_asset issuer/rcpt1 2000/0 100/1900 0 1 usdt
 
-_tit "checking issuer balances after the 1st transfer (blank transition)"
+_tit "checking issuer balances (blank transition)"
 check_balance issuer 1900 usdt
 check_balance issuer 2000 collectible
 
-_tit "transferring (CFA)"
+_tit "issuer -> rcpt 1 (CFA)"
 transfer_asset issuer/rcpt1 2000/0 200/1800 0 0 collectible
 
-_tit "transferring (spend change, using witness vout)"
+_tit "issuer -> rcpt 1 (spend change, witness)"
 transfer_asset issuer/rcpt1 1900/100 200/1700 1 0 usdt
 
-_tit "transferring (spend received)"
+_tit "rcpt 1 -> rcpt 2 (spend both received allocations)"
 transfer_asset rcpt1/rcpt2 300/0 150/150 0 0 usdt
 
-_tit "transferring (witness vout)"
+_tit "rcpt 2 -> issuer (close loop, witness)"
 transfer_asset rcpt2/issuer 150/1700 100/50 1 0 usdt
 
-_tit "transferring (spend received back)"
+_tit "issuer -> rcpt 1 (spend received back)"
 transfer_asset issuer/rcpt1 1800/150 50/1750 0 0 usdt
 
 _tit "checking final balances"
