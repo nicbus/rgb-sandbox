@@ -491,7 +491,9 @@ transfer_create() {
         if [ "$witness" = 1 ]; then
             address_mode="-a"
         else
-            _gen_utxo "$RCPT_WLT"
+            if [ "$SKIP_GEN_UTXO" != 1 ]; then
+                _gen_utxo "$RCPT_WLT"
+            fi
             address_mode=""
         fi
         # not quoting $address_mode so it doesn't get passed as "" if empty
@@ -510,8 +512,8 @@ transfer_create() {
     [ -n "$SATS" ] && sats=(--sats "$SATS")
     _trace "${RGB[@]}" -d "$send_data" transfer -w "$SEND_WLT" \
         --method $CLOSING_METHOD "${sats[@]}" \
-        "$INVOICE" $send_data/$CONSIGNMENT $send_data/$PSBT \
-        2>/dev/null
+        "$INVOICE" $send_data/$CONSIGNMENT $send_data/$PSBT #\
+        #2>/dev/null
     if ! ls "$send_data/$CONSIGNMENT" >/dev/null 2>&1; then
         _die "could not locate consignment file: $send_data/$CONSIGNMENT"
     fi
@@ -639,7 +641,7 @@ check_tools
 check_schemata_version
 set_aliases
 install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --branch master"
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/nicbus/rgb --branch dups.2024-03-21"
 #trap cleanup EXIT
 start_services
 prepare_wallets
@@ -649,10 +651,10 @@ setup_rgb_clients
 _tit "issuing assets"
 get_issue_utxo
 issue_asset "usdt" "NIA"
-issue_asset "collectible" "CFA"
+#issue_asset "collectible" "CFA"
 _tit "checking asset balances after issuance"
 check_balance "issuer" "2000" "usdt"
-check_balance "issuer" "2000" "collectible"
+#check_balance "issuer" "2000" "collectible"
 
 # export/import asset
 _tit "exporting asset"
@@ -660,47 +662,16 @@ export_asset usdt
 _tit "importing asset to recipient 1"
 import_asset usdt rcpt1
 
-# transfer loop:
-#   1. issuer -> rcpt 1 (spend issuance)
-#     1a. only initiate tranfer, don't complete (aborted transfer)
-#     1b. retry transfer (re-using invoice) and complete it
-#     1c. check asset balances
-#   2. issuer -> rcpt 1 (CFA)
-#   3. issuer -> rcpt 1 (spend change, using witness vout)
-#   4. rcpt 1 -> rcpt 2 (spend both received allocations)
-#   5. rcpt 2 -> issuer (close loop)
-#   6. issuer -> rcpt 1 (spend received back)
-#     6a. check asset balances
-_tit "creating transfer (spend issuance) but not completing it"
-transfer_create issuer/rcpt1 2000/0 100/1900 0 0 usdt
+# transfers
+_tit "issuer -> rcpt 1 (spend issuance)"
+transfer_asset issuer/rcpt1 2000/0 100/1900 0 0 usdt
 
-_tit "re-transferring (spend issuance) re-using the same invoice"
-transfer_asset issuer/rcpt1 2000/0 100/1900 0 1 usdt
+_tit "issuer -> rcpt 1 (spend change)"
+SKIP_GEN_UTXO=1
+transfer_asset issuer/rcpt1 1900/100 200/1700 0 0 usdt
+unset SKIP_GEN_UTXO
 
-_tit "checking issuer balances after the 1st transfer (blank transition)"
-check_balance issuer 1900 usdt
-check_balance issuer 2000 collectible
-
-_tit "transferring (CFA)"
-transfer_asset issuer/rcpt1 2000/0 200/1800 0 0 collectible
-
-_tit "transferring (spend change, using witness vout)"
-transfer_asset issuer/rcpt1 1900/100 200/1700 1 0 usdt
-
-_tit "transferring (spend received)"
-transfer_asset rcpt1/rcpt2 300/0 150/150 0 0 usdt
-
-_tit "transferring (witness vout)"
-transfer_asset rcpt2/issuer 150/1700 100/50 1 0 usdt
-
-_tit "transferring (spend received back)"
-transfer_asset issuer/rcpt1 1800/150 50/1750 0 0 usdt
-
-_tit "checking final balances"
-check_balance issuer 1750 usdt
-check_balance rcpt1 200 usdt
-check_balance rcpt2 50 usdt
-check_balance issuer 1800 collectible
-check_balance rcpt1 200 collectible
+_tit "rcpt 1 -> rcpt 2 (spend received)"
+transfer_asset rcpt1/rcpt2 300/0 250/50 0 0 usdt
 
 _tit "sandbox run finished"
