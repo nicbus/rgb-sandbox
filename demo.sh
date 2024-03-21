@@ -590,7 +590,9 @@ transfer_complete() {
     [ $DEBUG = 1 ] && _log "recipient unspents after transfer" && _list_unspent "$RCPT_WLT"
     _subtit "final balances"
     check_balance "$SEND_WLT" "$BLNC_SEND" "$NAME"
-    check_balance "$RCPT_WLT" "$BLNC_RCPT" "$NAME"
+    local blnc_rcpt=$BLNC_RCPT
+    [ -n "$CUSTOM_BLNC_RCPT" ] && blnc_rcpt=$CUSTOM_BLNC_RCPT
+    check_balance "$RCPT_WLT" "$blnc_rcpt" "$NAME"
 }
 
 help() {
@@ -649,10 +651,10 @@ setup_rgb_clients
 _tit "issuing assets"
 get_issue_utxo
 issue_asset "usdt" "NIA"
-issue_asset "collectible" "CFA"
+#issue_asset "collectible" "CFA"
 _tit "checking asset balances after issuance"
 check_balance "issuer" "2000" "usdt"
-check_balance "issuer" "2000" "collectible"
+#check_balance "issuer" "2000" "collectible"
 
 # export/import asset
 _tit "exporting asset"
@@ -660,46 +662,95 @@ export_asset usdt
 _tit "importing asset to recipient 1"
 import_asset usdt rcpt1
 
-# transfer loop:
-#   - issuer -> rcpt 1 (spend issuance, initiate only)  # simulate aborted transfer
-#   - issuer -> rcpt 1 (spend issuance, complete)       # simulate retry transfer
-#   - check issuer asset balances                       # make sure blank transition worked
-#   - issuer -> rcpt 1 (CFA)
-#   - issuer -> rcpt 1 (spend change, witness)
-#   - rcpt 1 -> rcpt 2 (spend both received allocations)
-#   - rcpt 2 -> issuer (close loop, witness)
-#   - issuer -> rcpt 1 (spend received back)
-#   - check asset balances
-_tit "issuer -> rcpt 1 (spend issuance, initiate only)"
-transfer_create issuer/rcpt1 2000/0 100/1900 0 0 usdt
+# transfers
+# save current issuer + chain data
+_tit "saving issuer + chain data"
+if [ "$PROFILE" = "esplora" ]; then
+    _subtit "stopping esplora services"
+    for SRV in socat electrs; do
+        docker compose exec esplora bash -c "sv -w 60 force-stop /etc/service/$SRV"
+    done
+fi
+docker compose --profile '*' down --remove-orphans -v
+_subtit "saving current data"
+rm -fr data0.1
+if [ "$PROFILE" = "electrum" ]; then
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/datacore.1"
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataelectrs.1"
+else
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataesplora.1"
+fi
+cp -a data0{,.1}
+if [ "$PROFILE" = "electrum" ]; then
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "cp -a /data/datacore{,.1}"
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "cp -a /data/dataelectrs{,.1}"
+else
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "cp -a /data/dataesplora{,.1}"
+fi
+_subtit "restarting services"
+docker compose --profile $PROFILE up -d
+echo -n "waiting for services to have started..."
+if [ "$PROFILE" = "electrum" ]; then
+    until docker compose logs bitcoind |grep -q 'Bound to'; do
+        sleep 1
+    done
+else
+    until docker compose logs esplora |grep -q 'Electrum RPC server running'; do
+        sleep 1
+    done
+fi
+echo " done"
+"${BCLI[@]}" loadwallet miner   # load bitcoind wallet
+_wait_indexers_sync
 
-_tit "issuer -> rcpt 1 (spend issuance, complete)"
-transfer_asset issuer/rcpt1 2000/0 100/1900 0 1 usdt
+# transfer a 1st time
+_tit "issuer -> rcpt 1 (1st)"
+transfer_asset issuer/rcpt1 2000/0 100/1900 0 0 usdt
 
-_tit "checking issuer balances (blank transition)"
-check_balance issuer 1900 usdt
-check_balance issuer 2000 collectible
+# restore previous issuer data
+_tit "restoring issuer + chain data"
+if [ "$PROFILE" = "esplora" ]; then
+    _subtit "stopping esplora services"
+    for SRV in socat electrs; do
+        docker compose exec esplora bash -c "sv -w 60 force-stop /etc/service/$SRV"
+    done
+fi
+docker compose --profile '*' down --remove-orphans -v
+_subtit "restoring previous data"
+rm -fr data0
+if [ "$PROFILE" = "electrum" ]; then
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/datacore"
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataelectrs"
+else
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataesplora"
+fi
+mv data0{.1,}
+if [ "$PROFILE" = "electrum" ]; then
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "mv /data/datacore{.1,}"
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "mv /data/dataelectrs{.1,}"
+else
+    docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "mv /data/dataesplora{.1,}"
+fi
+_subtit "restarting services"
+docker compose --profile $PROFILE up -d
+echo -n "waiting for services to have started..."
+if [ "$PROFILE" = "electrum" ]; then
+    until docker compose logs bitcoind |grep -q 'Bound to'; do
+        sleep 1
+    done
+else
+    until docker compose logs esplora |grep -q 'Electrum RPC server running'; do
+        sleep 1
+    done
+fi
+echo " done"
+"${BCLI[@]}" loadwallet miner   # load bitcoind wallet
+_wait_indexers_sync
 
-_tit "issuer -> rcpt 1 (CFA)"
-transfer_asset issuer/rcpt1 2000/0 200/1800 0 0 collectible
-
-_tit "issuer -> rcpt 1 (spend change, witness)"
-transfer_asset issuer/rcpt1 1900/100 200/1700 1 0 usdt
-
-_tit "rcpt 1 -> rcpt 2 (spend both received allocations)"
-transfer_asset rcpt1/rcpt2 300/0 150/150 0 0 usdt
-
-_tit "rcpt 2 -> issuer (close loop, witness)"
-transfer_asset rcpt2/issuer 150/1700 100/50 1 0 usdt
-
-_tit "issuer -> rcpt 1 (spend received back)"
-transfer_asset issuer/rcpt1 1800/150 50/1750 0 0 usdt
-
-_tit "checking final balances"
-check_balance issuer 1750 usdt
-check_balance rcpt1 200 usdt
-check_balance rcpt2 50 usdt
-check_balance issuer 1800 collectible
-check_balance rcpt1 200 collectible
+# make the same transfer a 2nd time, using the same invoic, and check it's accepted with no issues
+_tit "issuer -> rcpt 1 (2nd)"
+CUSTOM_BLNC_RCPT=100    # custom final recipient balance, as it doesn't change with this transfer
+# 2000/100 (expected initial recipient balance 100) as rcpt1 already sees the previous allocation
+transfer_asset issuer/rcpt1 2000/100 100/1900 0 1 usdt
 
 _tit "sandbox run finished"
