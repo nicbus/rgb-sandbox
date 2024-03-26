@@ -84,10 +84,10 @@ _trace() {
 # internal functions
 _gen_addr_rgb() {
     local wallet="$1"
-    local keychain="$2"
+    local keychain="${2:-$DER_KEYCHAIN}"
     _log "generating new address for wallet \"$wallet\""
     local wallet_id=${WLT_ID_MAP[$wallet]}
-    ADDR="$(_trace "${RGB[@]}" -d "data${wallet_id}" address -w "$wallet" -k $DER_KEYCHAIN 2>/dev/null \
+    ADDR="$(_trace "${RGB[@]}" -d "data${wallet_id}" address -w "$wallet" -k "$keychain" 2>/dev/null \
         | awk '/bcrt/ {print $NF}')"
     _log "generated address: $ADDR"
 }
