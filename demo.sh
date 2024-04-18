@@ -636,7 +636,7 @@ transfer_complete() {
 
 # cmdline arguments
 help() {
-    echo "$NAME [-h|--help] [-t|--tapret] [-v|--verbose]"
+    echo "$NAME [-h|--help] [-l|--list] [-s|--scenario <scenario>] [-v|--verbose] [--esplora]"
     echo ""
     echo "options:"
     echo "    -h --help      show this help message"
