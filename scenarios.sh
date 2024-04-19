@@ -56,5 +56,8 @@ if ls logs/*.ko.log >/dev/null 2>&1; then
     sleep 3
     _tit "errors from failed scenarios"
     echo
-    cat logs/*.ko.log |sed '/stopping services and cleaning/,$d' |tail -n3
+    for log in logs/*.ko.log; do
+        printf "\n-- %s:\n" "$log"
+        sed '/stopping services and cleaning/,$d' "$log" |tail -n3
+    done
 fi
