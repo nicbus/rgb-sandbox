@@ -288,7 +288,7 @@ start_services() {
     fi
     if [ "$PROFILE" = "esplora" ]; then
         # esplora
-        until docker compose logs esplora |grep -q 'waiting for bitcoind sync to finish'; do
+        until docker compose logs esplora |grep -q 'Bootstrapped 100%'; do
             sleep 1
         done
     fi
