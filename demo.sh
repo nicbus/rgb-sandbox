@@ -689,7 +689,7 @@ set_aliases
 
 # install crates
 install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES" "--debug"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --rev 991f81d" # develop 2024-04-29
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --rev 4fc24b1" # develop 2024-05-01
 
 # complete setup
 start_services
