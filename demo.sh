@@ -578,10 +578,9 @@ transfer_complete() {
     vldt="$(_trace "${RGB[@]}" -d "$rcpt_data" validate \
         "$rcpt_data/$CONSIGNMENT" 2>&1)"
     [ $DEBUG = 1 ] && _log "$vldt"
-    # TODO: re-enable this once #185 is fixed
-    #if ! echo "$vldt" | grep -q 'The provided consignment is valid'; then
-    #    _die "validation failed (transfer $TRANSFER_NUM)"
-    #fi
+    if ! echo "$vldt" | grep -q 'The provided consignment is valid'; then
+        _die "validation failed (transfer $TRANSFER_NUM)"
+    fi
 
     ## sign + finalize + broadcast PSBT
     _subtit "(sender) signing PSBT"
@@ -774,7 +773,7 @@ scenario_1() {
     check_balance wallet_2   50 collectible
 }
 
-scenario_185() {
+scenario_187() {
     local method="opret1st"
     # wallets
     prepare_rgb_wallet wallet_0 $method
@@ -782,10 +781,8 @@ scenario_185() {
     # asset issuance
     get_issue_utxo wallet_0
     issue_asset wallet_0 usdt NIA $method
-    #issue_asset wallet_0 collectible CFA $method
     # initial balance checks
     check_balance wallet_0 2000 usdt
-    #check_balance wallet_0 2000 collectible
     # transfers
     transfer_asset  wallet_0/wallet_1 2000/0     100 1900/100  0 0 usdt         #
 }
