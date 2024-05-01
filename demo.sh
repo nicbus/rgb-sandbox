@@ -20,7 +20,6 @@ RGB_WALLET_VER="0.11.0-beta.5"
 CLOSING_METHODS=("opret1st" "tapret1st")
 
 # rgb-schemata variables
-INTERFACE_DIR="./rgb-schemata/interfaces"
 SCHEMATA_DIR="./rgb-schemata/schemata"
 
 # indexer variables
@@ -43,8 +42,8 @@ declare -A CONTRACT_ID_MAP
 declare -A CONTRACT_SCHEMA_MAP
 declare -A DESC_MAP
 declare -A IFACE_MAP
-IFACE_MAP["NIA"]="RGB20"
-IFACE_MAP["CFA"]="RGB25"
+IFACE_MAP["NIA"]="RGB20Fixed"
+IFACE_MAP["CFA"]="RGB25Base"
 declare -A SCHEMA_MAP
 declare -A WLT_CM_MAP
 declare -A WLT_ID_MAP
@@ -391,7 +390,7 @@ issue_asset() {
         -e "s/txid/$TXID_ISSUE/" \
         -e "s/vout/$VOUT_ISSUE/" \
         "$contract_tmpl" > "$contract_yaml"
-    issuance="$(_trace "${RGB[@]}" -d "data${wallet_id}" issue -w "$wallet" "$schema_id" "$contract_yaml" 2>&1)"
+    issuance="$(_trace "${RGB[@]}" -d "data${wallet_id}" issue -w "$wallet" "$schema_id" "ssi:$wallet" "$contract_yaml" 2>&1)"
     _log "$issuance"
     contract_id="$(echo "$issuance" | grep '^A new contract' | cut -d' ' -f4)"
     CONTRACT_ID_MAP[$contract_name]=$contract_id
@@ -445,13 +444,9 @@ prepare_rgb_wallet() {
     wallet_id=${WLT_ID_MAP[$wallet]}
     _trace "${RGB[@]}" -d "data${wallet_id}" create $desc_opt "${DESC_MAP[$wallet]}" "$wallet"
     # NIA
-    _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $INTERFACE_DIR/RGB20.rgb
-    schema_nia="$(_trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $SCHEMATA_DIR/NonInflatableAssets.rgb 2>&1 | awk '/^Schema/ {print $2}')"
-    _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $SCHEMATA_DIR/NonInflatableAssets-RGB20.rgb
+    schema_nia="$(_trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $SCHEMATA_DIR/NonInflatableAssets.rgb 2>&1 | awk '/^- schema/ {print $NF}')"
     # CFA
-    _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $INTERFACE_DIR/RGB25.rgb
-    schema_cfa="$(_trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $SCHEMATA_DIR/CollectibleFungibleAssets.rgb 2>&1 | awk '/^Schema/ {print $2}')"
-    _trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $SCHEMATA_DIR/CollectibleFungibleAssets-RGB25.rgb
+    schema_cfa="$(_trace "${RGB[@]}" -d "data${wallet_id}" import -w "$wallet" $SCHEMATA_DIR/CollectibleFungibleAsset.rgb 2>&1 | awk '/^- schema/ {print $NF}')"
     # first wallet only
     if [ $wallet_id = 0 ]; then
         SCHEMA_MAP["NIA"]="$schema_nia"
@@ -486,7 +481,6 @@ transfer_create() {
     local witness="$5"          # 1 for witness txid, blinded UTXO otherwise
     local reuse_invoice="$6"    # 1 to re-use the previous invoice
     XFER_CONTRACT_NAME="$7"     # contract name
-    local method="$8"           # closing method
 
     ## data variables
     local contract_id rcpt_data rcpt_id send_data send_id
@@ -505,8 +499,7 @@ transfer_create() {
     iface=${IFACE_MAP[$schema]}
 
     ## starting situation
-    _tit "sending $send_amt $XFER_CONTRACT_NAME from $SEND_WLT to $RCPT_WLT ($method)"
-    _check_method "$method"
+    _tit "sending $send_amt $XFER_CONTRACT_NAME from $SEND_WLT to $RCPT_WLT"
     [ $DEBUG = 1 ] && _log "sender unspents before transfer" && _list_unspent "$SEND_WLT"
     [ $DEBUG = 1 ] && _log "recipient unspents before transfer" && _list_unspent "$RCPT_WLT"
     _subtit "initial balances"
@@ -546,7 +539,7 @@ transfer_create() {
     local sats=(--sats 2000)
     [ -n "$SATS" ] && sats=(--sats "$SATS")
     _trace "${RGB[@]}" -d "$send_data" transfer -w "$SEND_WLT" \
-        --method "$method" "${sats[@]}" \
+        "${sats[@]}" \
         "$INVOICE" $send_data/$CONSIGNMENT $send_data/$PSBT
     if ! ls "$send_data/$CONSIGNMENT" >/dev/null 2>&1; then
         _die "could not locate consignment file: $send_data/$CONSIGNMENT"
@@ -691,11 +684,11 @@ _tit "setting up"
 check_tools
 check_schemata_version
 set_aliases
-trap cleanup EXIT
+#trap cleanup EXIT
 
 # install crates
 install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES" "--debug"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES"
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --rev 991f81d" # develop 2024-04-29
 
 # complete setup
 start_services
@@ -722,16 +715,16 @@ scenario_0() {  # default
     check_balance wallet_1 2000 usdt
     check_balance wallet_1 2000 collectible
     # transfers
-    transfer_create wallet_1/wallet_2 2000/0     100 1900/100  0 0 usdt $method         # aborted
-    transfer_asset  wallet_1/wallet_2 2000/0     100 1900/100  0 1 usdt $method         # retried
-    transfer_asset  wallet_1/wallet_2 2000/0     200 1800/200  0 0 collectible $method  # CFA
-    transfer_asset  wallet_1/wallet_2 1900/100   200 1700/300  1 0 usdt $method         # change, witness
-    transfer_asset  wallet_2/wallet_3  300/0     150  150/150  0 0 usdt $method         # spend both received allocations
-    transfer_asset  wallet_2/wallet_3  200/0     100  100/100  0 0 collectible $method  # CFA, spend received allocations
-    transfer_asset  wallet_3/wallet_1  150/1700  100   50/1800 1 0 usdt $method         # close loop, witness
-    transfer_asset  wallet_3/wallet_1  100/1800   50   50/1850 1 0 collectible $method  # CFA, close loop, witness
-    transfer_asset  wallet_1/wallet_2 1800/150    50 1750/200  0 0 usdt $method         # spend received back
-    transfer_asset  wallet_1/wallet_2 1850/100    25 1825/125  0 0 collectible $method  # CFA, spend received back
+    transfer_create wallet_1/wallet_2 2000/0     100 1900/100  0 0 usdt         # aborted
+    transfer_asset  wallet_1/wallet_2 2000/0     100 1900/100  0 1 usdt         # retried
+    transfer_asset  wallet_1/wallet_2 2000/0     200 1800/200  0 0 collectible  # CFA
+    transfer_asset  wallet_1/wallet_2 1900/100   200 1700/300  1 0 usdt         # change, witness
+    transfer_asset  wallet_2/wallet_3  300/0     150  150/150  0 0 usdt         # spend both received allocations
+    transfer_asset  wallet_2/wallet_3  200/0     100  100/100  0 0 collectible  # CFA, spend received allocations
+    transfer_asset  wallet_3/wallet_1  150/1700  100   50/1800 1 0 usdt         # close loop, witness
+    transfer_asset  wallet_3/wallet_1  100/1800   50   50/1850 1 0 collectible  # CFA, close loop, witness
+    transfer_asset  wallet_1/wallet_2 1800/150    50 1750/200  0 0 usdt         # spend received back
+    transfer_asset  wallet_1/wallet_2 1850/100    25 1825/125  0 0 collectible  # CFA, spend received back
     # final balance checks
     _tit "checking final balances"
     check_balance wallet_1 1750 usdt
@@ -760,16 +753,16 @@ scenario_1() {
     check_balance wallet_1 2000 usdt
     check_balance wallet_1 2000 collectible
     # transfers
-    transfer_create wallet_1/wallet_2 2000/0     100 1900/100  0 0 usdt $method         # aborted
-    transfer_asset  wallet_1/wallet_2 2000/0     100 1900/100  0 1 usdt $method         # retried
-    transfer_asset  wallet_1/wallet_2 2000/0     200 1800/200  0 0 collectible $method  # CFA
-    transfer_asset  wallet_1/wallet_2 1900/100   200 1700/300  1 0 usdt $method         # change, witness
-    transfer_asset  wallet_2/wallet_3  300/0     150  150/150  0 0 usdt $method         # spend both received allocations
-    transfer_asset  wallet_2/wallet_3  200/0     100  100/100  0 0 collectible $method  # CFA, spend received allocations
-    transfer_asset  wallet_3/wallet_1  150/1700  100   50/1800 1 0 usdt $method         # close loop, witness
-    transfer_asset  wallet_3/wallet_1  100/1800   50   50/1850 1 0 collectible $method  # CFA, close loop, witness
-    transfer_asset  wallet_1/wallet_2 1800/150    50 1750/200  0 0 usdt $method         # spend received back
-    transfer_asset  wallet_1/wallet_2 1850/100    25 1825/125  0 0 collectible $method  # CFA, spend received back
+    transfer_create wallet_1/wallet_2 2000/0     100 1900/100  0 0 usdt         # aborted
+    transfer_asset  wallet_1/wallet_2 2000/0     100 1900/100  0 1 usdt         # retried
+    transfer_asset  wallet_1/wallet_2 2000/0     200 1800/200  0 0 collectible  # CFA
+    transfer_asset  wallet_1/wallet_2 1900/100   200 1700/300  1 0 usdt         # change, witness
+    transfer_asset  wallet_2/wallet_3  300/0     150  150/150  0 0 usdt         # spend both received allocations
+    transfer_asset  wallet_2/wallet_3  200/0     100  100/100  0 0 collectible  # CFA, spend received allocations
+    transfer_asset  wallet_3/wallet_1  150/1700  100   50/1800 1 0 usdt         # close loop, witness
+    transfer_asset  wallet_3/wallet_1  100/1800   50   50/1850 1 0 collectible  # CFA, close loop, witness
+    transfer_asset  wallet_1/wallet_2 1800/150    50 1750/200  0 0 usdt         # spend received back
+    transfer_asset  wallet_1/wallet_2 1850/100    25 1825/125  0 0 collectible  # CFA, spend received back
     # final balance checks
     _tit "checking final balances"
     check_balance wallet_1 1750 usdt

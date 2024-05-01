@@ -1,4 +1,4 @@
-interface: RGB25
+interface: RGB25Base
 
 globals:
   name: Other asset

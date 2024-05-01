@@ -1,4 +1,4 @@
-interface: RGB20
+interface: RGB20Fixed
 
 globals:
   spec:
