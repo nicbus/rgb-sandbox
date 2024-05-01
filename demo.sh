@@ -186,7 +186,7 @@ _show_state() {
     schema=${CONTRACT_SCHEMA_MAP[$contract_name]}
     iface=${IFACE_MAP[$schema]}
     _trace "${RGB[@]}" -d "data${wallet_id}" \
-        state -w "$wallet" "$contract_id" "$iface"
+        state -w "$wallet" -a "$contract_id" "$iface"
 }
 
 
