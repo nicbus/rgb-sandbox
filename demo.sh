@@ -342,10 +342,10 @@ check_balance() {
 
 export_asset() {
     local contract_name="$1"
-    local contract_file contract_id wallet wallet_id
+    local wallet="$2"
+    local contract_file contract_id wallet_id
     contract_file=${CONTRACT_DIR}/${contract_name}.rgb
     contract_id=${CONTRACT_ID_MAP[$contract_name]}
-    wallet="issuer"
     wallet_id=${WLT_ID_MAP[$wallet]}
     _trace "${RGB[@]}" -d "data${wallet_id}" export -w "$wallet" "$contract_id" "$contract_file"
 }
@@ -715,6 +715,9 @@ scenario_0() {  # default
     get_issue_utxo wallet_1
     issue_asset wallet_1 usdt NIA $method
     issue_asset wallet_1 collectible CFA $method
+    # export/import NIA asset
+    export_asset usdt issuer
+    import_asset usdt wallet_2
     # initial balance checks
     check_balance wallet_1 2000 usdt
     check_balance wallet_1 2000 collectible
@@ -750,6 +753,9 @@ scenario_1() {
     get_issue_utxo wallet_1
     issue_asset wallet_1 usdt NIA $method
     issue_asset wallet_1 collectible CFA $method
+    # export/import NIA asset
+    export_asset usdt issuer
+    import_asset usdt wallet_2
     # initial balance checks
     check_balance wallet_1 2000 usdt
     check_balance wallet_1 2000 collectible
