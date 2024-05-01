@@ -773,6 +773,35 @@ scenario_1() {
     check_balance wallet_3   50 collectible
 }
 
+scenario_185() {
+    local method="opret1st"
+    # wallets
+    prepare_rgb_wallet wallet_1 $method
+    prepare_rgb_wallet wallet_2 $method
+    # asset issuance
+    get_issue_utxo wallet_1
+    issue_asset wallet_1 usdt NIA $method
+    #issue_asset wallet_1 collectible CFA $method
+    # initial balance checks
+    check_balance wallet_1 2000 usdt
+    #check_balance wallet_1 2000 collectible
+    # transfers
+    transfer_asset  wallet_1/wallet_2 2000/0     100 1900/100  0 0 usdt         #
+}
+
+scenario_186() {
+    local method="opret1st"
+    # wallets
+    prepare_rgb_wallet wallet_1 $method
+    prepare_rgb_wallet wallet_2 $method
+    # asset issuance
+    get_issue_utxo wallet_1
+    issue_asset wallet_1 usdt NIA $method
+    # export/import NIA asset
+    export_asset usdt issuer
+    import_asset usdt wallet_2
+}
+
 # run selected scenario
 $SCENARIO
 
