@@ -702,105 +702,105 @@ prepare_btc_wallet
 scenario_0() {  # default
     local method="opret1st"
     # wallets
+    prepare_rgb_wallet wallet_0 $method
     prepare_rgb_wallet wallet_1 $method
     prepare_rgb_wallet wallet_2 $method
-    prepare_rgb_wallet wallet_3 $method
     # asset issuance
-    get_issue_utxo wallet_1
-    issue_asset wallet_1 usdt NIA $method
-    issue_asset wallet_1 collectible CFA $method
+    get_issue_utxo wallet_0
+    issue_asset wallet_0 usdt NIA $method
+    issue_asset wallet_0 collectible CFA $method
     # export/import NIA asset
     export_asset usdt issuer
-    import_asset usdt wallet_2
+    import_asset usdt wallet_1
     # initial balance checks
-    check_balance wallet_1 2000 usdt
-    check_balance wallet_1 2000 collectible
+    check_balance wallet_0 2000 usdt
+    check_balance wallet_0 2000 collectible
     # transfers
-    transfer_create wallet_1/wallet_2 2000/0     100 1900/100  0 0 usdt         # aborted
-    transfer_asset  wallet_1/wallet_2 2000/0     100 1900/100  0 1 usdt         # retried
-    transfer_asset  wallet_1/wallet_2 2000/0     200 1800/200  0 0 collectible  # CFA
-    transfer_asset  wallet_1/wallet_2 1900/100   200 1700/300  1 0 usdt         # change, witness
-    transfer_asset  wallet_2/wallet_3  300/0     150  150/150  0 0 usdt         # spend both received allocations
-    transfer_asset  wallet_2/wallet_3  200/0     100  100/100  0 0 collectible  # CFA, spend received allocations
-    transfer_asset  wallet_3/wallet_1  150/1700  100   50/1800 1 0 usdt         # close loop, witness
-    transfer_asset  wallet_3/wallet_1  100/1800   50   50/1850 1 0 collectible  # CFA, close loop, witness
-    transfer_asset  wallet_1/wallet_2 1800/150    50 1750/200  0 0 usdt         # spend received back
-    transfer_asset  wallet_1/wallet_2 1850/100    25 1825/125  0 0 collectible  # CFA, spend received back
+    transfer_create wallet_0/wallet_1 2000/0     100 1900/100  0 0 usdt         # aborted
+    transfer_asset  wallet_0/wallet_1 2000/0     100 1900/100  0 1 usdt         # retried
+    transfer_asset  wallet_0/wallet_1 2000/0     200 1800/200  0 0 collectible  # CFA
+    transfer_asset  wallet_0/wallet_1 1900/100   200 1700/300  1 0 usdt         # change, witness
+    transfer_asset  wallet_1/wallet_2  300/0     150  150/150  0 0 usdt         # spend both received allocations
+    transfer_asset  wallet_1/wallet_2  200/0     100  100/100  0 0 collectible  # CFA, spend received allocations
+    transfer_asset  wallet_2/wallet_0  150/1700  100   50/1800 1 0 usdt         # close loop, witness
+    transfer_asset  wallet_2/wallet_0  100/1800   50   50/1850 1 0 collectible  # CFA, close loop, witness
+    transfer_asset  wallet_0/wallet_1 1800/150    50 1750/200  0 0 usdt         # spend received back
+    transfer_asset  wallet_0/wallet_1 1850/100    25 1825/125  0 0 collectible  # CFA, spend received back
     # final balance checks
     _tit "checking final balances"
-    check_balance wallet_1 1750 usdt
-    check_balance wallet_2  200 usdt
-    check_balance wallet_3   50 usdt
-    check_balance wallet_1 1825 collectible
-    check_balance wallet_2  125 collectible
-    check_balance wallet_3   50 collectible
+    check_balance wallet_0 1750 usdt
+    check_balance wallet_1  200 usdt
+    check_balance wallet_2   50 usdt
+    check_balance wallet_0 1825 collectible
+    check_balance wallet_1  125 collectible
+    check_balance wallet_2   50 collectible
 }
 
 # full round of tapret transfers
 scenario_1() {
     local method="tapret1st"
     # wallets
+    prepare_rgb_wallet wallet_0 $method
     prepare_rgb_wallet wallet_1 $method
     prepare_rgb_wallet wallet_2 $method
-    prepare_rgb_wallet wallet_3 $method
     # asset issuance
-    get_issue_utxo wallet_1
-    issue_asset wallet_1 usdt NIA $method
-    issue_asset wallet_1 collectible CFA $method
+    get_issue_utxo wallet_0
+    issue_asset wallet_0 usdt NIA $method
+    issue_asset wallet_0 collectible CFA $method
     # export/import NIA asset
     export_asset usdt issuer
-    import_asset usdt wallet_2
+    import_asset usdt wallet_1
     # initial balance checks
-    check_balance wallet_1 2000 usdt
-    check_balance wallet_1 2000 collectible
+    check_balance wallet_0 2000 usdt
+    check_balance wallet_0 2000 collectible
     # transfers
-    transfer_create wallet_1/wallet_2 2000/0     100 1900/100  0 0 usdt         # aborted
-    transfer_asset  wallet_1/wallet_2 2000/0     100 1900/100  0 1 usdt         # retried
-    transfer_asset  wallet_1/wallet_2 2000/0     200 1800/200  0 0 collectible  # CFA
-    transfer_asset  wallet_1/wallet_2 1900/100   200 1700/300  1 0 usdt         # change, witness
-    transfer_asset  wallet_2/wallet_3  300/0     150  150/150  0 0 usdt         # spend both received allocations
-    transfer_asset  wallet_2/wallet_3  200/0     100  100/100  0 0 collectible  # CFA, spend received allocations
-    transfer_asset  wallet_3/wallet_1  150/1700  100   50/1800 1 0 usdt         # close loop, witness
-    transfer_asset  wallet_3/wallet_1  100/1800   50   50/1850 1 0 collectible  # CFA, close loop, witness
-    transfer_asset  wallet_1/wallet_2 1800/150    50 1750/200  0 0 usdt         # spend received back
-    transfer_asset  wallet_1/wallet_2 1850/100    25 1825/125  0 0 collectible  # CFA, spend received back
+    transfer_create wallet_0/wallet_1 2000/0     100 1900/100  0 0 usdt         # aborted
+    transfer_asset  wallet_0/wallet_1 2000/0     100 1900/100  0 1 usdt         # retried
+    transfer_asset  wallet_0/wallet_1 2000/0     200 1800/200  0 0 collectible  # CFA
+    transfer_asset  wallet_0/wallet_1 1900/100   200 1700/300  1 0 usdt         # change, witness
+    transfer_asset  wallet_1/wallet_2  300/0     150  150/150  0 0 usdt         # spend both received allocations
+    transfer_asset  wallet_1/wallet_2  200/0     100  100/100  0 0 collectible  # CFA, spend received allocations
+    transfer_asset  wallet_2/wallet_0  150/1700  100   50/1800 1 0 usdt         # close loop, witness
+    transfer_asset  wallet_2/wallet_0  100/1800   50   50/1850 1 0 collectible  # CFA, close loop, witness
+    transfer_asset  wallet_0/wallet_1 1800/150    50 1750/200  0 0 usdt         # spend received back
+    transfer_asset  wallet_0/wallet_1 1850/100    25 1825/125  0 0 collectible  # CFA, spend received back
     # final balance checks
     _tit "checking final balances"
-    check_balance wallet_1 1750 usdt
-    check_balance wallet_2  200 usdt
-    check_balance wallet_3   50 usdt
-    check_balance wallet_1 1825 collectible
-    check_balance wallet_2  125 collectible
-    check_balance wallet_3   50 collectible
+    check_balance wallet_0 1750 usdt
+    check_balance wallet_1  200 usdt
+    check_balance wallet_2   50 usdt
+    check_balance wallet_0 1825 collectible
+    check_balance wallet_1  125 collectible
+    check_balance wallet_2   50 collectible
 }
 
 scenario_185() {
     local method="opret1st"
     # wallets
+    prepare_rgb_wallet wallet_0 $method
     prepare_rgb_wallet wallet_1 $method
-    prepare_rgb_wallet wallet_2 $method
     # asset issuance
-    get_issue_utxo wallet_1
-    issue_asset wallet_1 usdt NIA $method
-    #issue_asset wallet_1 collectible CFA $method
+    get_issue_utxo wallet_0
+    issue_asset wallet_0 usdt NIA $method
+    #issue_asset wallet_0 collectible CFA $method
     # initial balance checks
-    check_balance wallet_1 2000 usdt
-    #check_balance wallet_1 2000 collectible
+    check_balance wallet_0 2000 usdt
+    #check_balance wallet_0 2000 collectible
     # transfers
-    transfer_asset  wallet_1/wallet_2 2000/0     100 1900/100  0 0 usdt         #
+    transfer_asset  wallet_0/wallet_1 2000/0     100 1900/100  0 0 usdt         #
 }
 
 scenario_186() {
     local method="opret1st"
     # wallets
+    prepare_rgb_wallet wallet_0 $method
     prepare_rgb_wallet wallet_1 $method
-    prepare_rgb_wallet wallet_2 $method
     # asset issuance
-    get_issue_utxo wallet_1
-    issue_asset wallet_1 usdt NIA $method
+    get_issue_utxo wallet_0
+    issue_asset wallet_0 usdt NIA $method
     # export/import NIA asset
     export_asset usdt issuer
-    import_asset usdt wallet_2
+    import_asset usdt wallet_1
 }
 
 # run selected scenario
