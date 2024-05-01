@@ -199,7 +199,7 @@ check_schemata_version() {
 
 check_tools() {
     _subtit "checking required tools"
-    local required_tools="awk base64 cargo cut docker grep head jq netcat sha256sum"
+    local required_tools="awk base64 cargo cut docker grep head jq netcat sha256sum tr"
     for tool in $required_tools; do
         if ! which "$tool" >/dev/null; then
             _die "could not find reruired tool \"$tool\", please install it and try again"
@@ -264,15 +264,11 @@ start_services() {
     _subtit "stopping services"
     docker compose --profile '*' down --remove-orphans -v
     _subtit "checking bound ports"
-    if ! which ss >/dev/null; then
-        _log "ss not available, skipping bound ports check"
-        return
-    fi
     # see docker-compose.yml for the exposed ports
     [ "$PROFILE" = "electrum" ] && EXPOSED_PORTS=(50001)
     [ "$PROFILE" = "esplora" ] && EXPOSED_PORTS=(8094)
     for port in "${EXPOSED_PORTS[@]}"; do
-        if [ -n "$(ss -HOlnt "sport = :$port")" ];then
+        if netcat -z localhost "$port"; then
             _die "port $port is already bound, services can't be started"
         fi
     done
@@ -547,7 +543,7 @@ transfer_create() {
 
     ## extract PSBT data
     local decoded_psbt
-    decoded_psbt="$(_trace "${BCLI[@]}" decodepsbt "$(base64 -w0 $send_data/$PSBT)")"
+    decoded_psbt="$(_trace "${BCLI[@]}" decodepsbt "$(base64_file_nowrap "$send_data/$PSBT")")"
     if [ $DEBUG = 1 ]; then
         _log "showing PSBT including RGB transfer data"
         echo "$decoded_psbt" | jq
@@ -626,6 +622,16 @@ transfer_complete() {
     # increment transfer number
     ((TRANSFER_NUM+=1))
 }
+
+base64_file_nowrap() {
+    # This function encodes the specified file to base64 format without wrapping lines.
+    # By default, Linux systems wrap base64 output every 76 columns. We use 'tr -d' to remove whitespaces.
+    # Note that the option '-w0' for 'base64' doesn't work on Mac OS X due to different flags.
+    # Arguments:
+    #   $1: File path to be encoded
+    cat "$1" | base64 | tr -d '\r\n'
+}
+
 
 # cmdline arguments
 help() {
