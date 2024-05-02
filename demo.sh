@@ -239,7 +239,7 @@ set_aliases() {
     BTCHOT=("descriptor-wallet/bin/btc-hot")
     BTCCOLD=("descriptor-wallet/bin/btc-cold")
     ESPLORA_CLI=("docker" "compose" "exec" "-T" "esplora" "cli")
-    RGB=("rgb-wallet/bin/rgb" "-n" "$NETWORK" "$INDEXER_CLI" "$INDEXER_ENDPOINT")
+    RGB=("rgb-wallet/bin/rgb" "-n" "$NETWORK" "$INDEXER_CLI=$INDEXER_ENDPOINT")
     if [ "$PROFILE" = "electrum" ]; then
         BCLI=("${BITCOIND_CLI[@]}")
     else
