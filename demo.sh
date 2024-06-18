@@ -283,6 +283,16 @@ start_services() {
             _die "port $port is already bound, services can't be started"
         fi
     done
+    _subtit "cleaning service data dirs"
+    for d in datacore dataelectrs; do
+        if [ -d "$d" ]; then
+            rm -r $d
+            mkdir -p $d
+        fi
+    done
+    if [ -d "dataesplora" ]; then
+        docker compose run --rm esplora bash -c "rm -r /data/.bitcoin.conf /data/*"
+    fi
     _subtit "starting services"
     docker compose --profile $PROFILE up -d
     echo -n "waiting for services to have started..."
@@ -328,7 +338,7 @@ check_balance() {
         done
         mapfile -t allocations < <("${RGB[@]}" -d "data${wallet_id}" \
             state -w "$wallet" "$contract_id" "$iface" 2>/dev/null \
-            | grep 'amount=' | awk -F',' '{print $1" "$2}')
+            | grep 'value=' | awk -F',' '{print $1" "$2}')
         _log "allocations:"
         for allocation in "${allocations[@]}"; do
             echo " - $allocation"
@@ -488,6 +498,25 @@ prepare_rgb_wallet() {
     fi
 }
 
+sign_and_broadcast() {
+    local send_data="$1"
+    _subtit "(sender) signing PSBT"
+    local signing tx txid
+    _trace "${BTCHOT[@]}" sign -p '' "$send_data/$PSBT" \
+        "$WALLET_PATH/$SEND_WLT.derive" >$TRACE_OUT
+    signing="$(cat $TRACE_OUT)"
+    if ! echo "$signing" | grep -q 'Done [1-9] signatures'; then
+        _die "signing failed (transfer $TRANSFER_NUM)"
+    fi
+    _subtit "(sender) finalizing PSBT"
+    _trace "${BTCCOLD[@]}" finalize "$send_data/$PSBT" >$TRACE_OUT
+    tx="$(cat $TRACE_OUT)"
+    _subtit "(sender) broadcasting tx"
+    _trace "${BCLI[@]}" sendrawtransaction "$tx" >$TRACE_OUT
+    txid="$(cat $TRACE_OUT)"
+    _log "txid: $txid"
+}
+
 transfer_assets() {
     transfer_create "$@"    # parameter pass-through
     transfer_complete       # uses global variables set by transfer_create
@@ -526,11 +555,14 @@ transfer_create() {
     _tit "sending $send_amt $XFER_CONTRACT_NAME from $SEND_WLT to $RCPT_WLT"
     [ $DEBUG = 1 ] && _subtit "sender unspents before transfer" && _list_unspent "$SEND_WLT"
     [ $DEBUG = 1 ] && _subtit "recipient unspents before transfer" && _list_unspent "$RCPT_WLT"
+    [ $DEBUG = 1 ] && _subtit "sender state before transfer" && _show_state "$SEND_WLT" "$XFER_CONTRACT_NAME"
+    [ $DEBUG = 1 ] && _subtit "recipient state before transfer" && _show_state "$RCPT_WLT" "$XFER_CONTRACT_NAME"
     _subtit "initial balances"
-    check_balance "$SEND_WLT" "$blnc_send" "$XFER_CONTRACT_NAME" 1
+    [ "$SKIP_INITIAL_SENDER_CHECK_BALANCE" != 1 ] && check_balance "$SEND_WLT" "$blnc_send" "$XFER_CONTRACT_NAME" 1
     check_balance "$RCPT_WLT" "$blnc_rcpt" "$XFER_CONTRACT_NAME" 1
     BLNC_SEND=$((blnc_send-send_amt))
     BLNC_RCPT=$((blnc_rcpt+send_amt))
+    [ -n "$CUSTOM_BLNC_RCPT" ] && BLNC_RCPT=$CUSTOM_BLNC_RCPT
     blnc_send=$(echo "$balances_final" |cut -d/ -f1)
     blnc_rcpt=$(echo "$balances_final" |cut -d/ -f2)
     [ "$BLNC_SEND" = "$blnc_send" ] || \
@@ -539,20 +571,22 @@ transfer_create() {
         _die "expected final recipient balance $BLNC_RCPT differs from the provided $blnc_rcpt (transfer $TRANSFER_NUM)"
 
     ## generate invoice
-    _subtit "(recipient) preparing invoice"
     local address_mode
     if [ "$reuse_invoice" != 1 ]; then
+        _subtit "(recipient) preparing invoice"
         if [ "$witness" = 1 ]; then
             address_mode="-a"
         else
-            _gen_utxo "$RCPT_WLT"
+            [ "$NO_GEN_UTXO" != 1 ] && _gen_utxo "$RCPT_WLT"
             address_mode=""
         fi
         # not quoting $address_mode so it doesn't get passed as "" if empty
         # shellcheck disable=2086
         _trace "${RGB[@]}" -d "$rcpt_data" invoice $address_mode \
-            -w "$RCPT_WLT" "$contract_id" $iface "$send_amt" >$TRACE_OUT 2>/dev/null
+            -w "$RCPT_WLT" "$contract_id" $iface "$send_amt" >$TRACE_OUT
         INVOICE="$(cat $TRACE_OUT)"
+    else
+        _subtit "(recipient) re-using invoice"
     fi
     _log "invoice: $INVOICE"
 
@@ -561,9 +595,11 @@ transfer_create() {
     CONSIGNMENT="consignment_${TRANSFER_NUM}.rgb"
     PSBT=tx_${TRANSFER_NUM}.psbt
     local sats=(--sats 2000)
+    local fee=()
     [ -n "$SATS" ] && sats=(--sats "$SATS")
+    [ -n "$FEE" ] && fee=(--fee "$FEE")
     _trace "${RGB[@]}" -d "$send_data" transfer -w "$SEND_WLT" \
-        "${sats[@]}" \
+        "${sats[@]}" "${fee[@]}" \
         "$INVOICE" "$send_data/$CONSIGNMENT" "$send_data/$PSBT"
     if ! ls "$send_data/$CONSIGNMENT" >/dev/null 2>&1; then
         _die "could not locate consignment file: $send_data/$CONSIGNMENT"
@@ -609,21 +645,7 @@ transfer_complete() {
     fi
 
     ## sign + finalize + broadcast PSBT
-    _subtit "(sender) signing PSBT"
-    local signing tx txid
-    _trace "${BTCHOT[@]}" sign -p '' "$send_data/$PSBT" \
-        "$WALLET_PATH/$SEND_WLT.derive" >$TRACE_OUT
-    signing="$(cat $TRACE_OUT)"
-    if ! echo "$signing" | grep -q 'Done [1-9] signatures'; then
-        _die "signing failed (transfer $TRANSFER_NUM)"
-    fi
-    _subtit "(sender) finalizing PSBT"
-    _trace "${BTCCOLD[@]}" finalize "$send_data/$PSBT" >$TRACE_OUT
-    tx="$(cat $TRACE_OUT)"
-    _subtit "(sender) broadcasting tx"
-    _trace "${BCLI[@]}" sendrawtransaction "$tx"
-    txid="$(cat $TRACE_OUT)"
-    echo "$txid"
+    sign_and_broadcast "$send_data"
 
     ## mine and sync wallets
     _subtit "confirming transaction"
@@ -645,8 +667,6 @@ transfer_complete() {
     fi
 
     ## ending situation
-    [ $DEBUG = 1 ] && _subtit "sender unspents after transfer" && _list_unspent "$SEND_WLT"
-    [ $DEBUG = 1 ] && _subtit "recipient unspents after transfer" && _list_unspent "$RCPT_WLT"
     [ $DEBUG = 1 ] && _subtit "sender state after transfer" && _show_state "$SEND_WLT" "$XFER_CONTRACT_NAME"
     [ $DEBUG = 1 ] && _subtit "recipient state after transfer" && _show_state "$RCPT_WLT" "$XFER_CONTRACT_NAME"
     _subtit "final balances"
@@ -728,11 +748,13 @@ set_aliases
 
 # install crates
 install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES" "--debug"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES"
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --branch master" # 8a8b20e
 
 # complete setup
-start_services
-prepare_btc_wallet
+if [ -z "$SKIP_INIT" ]; then
+    start_services
+    prepare_btc_wallet
+fi
 
 
 ## scenario definitions
@@ -748,9 +770,13 @@ scenario_0() {  # default
     get_issue_utxo wallet_0
     issue_contract wallet_0 usdt NIA $method
     issue_contract wallet_0 collectible CFA $method
-    # export/import NIA contract
+    # export/import contracts
     export_contract usdt wallet_0
     import_contract usdt wallet_1
+    import_contract usdt wallet_2
+    export_contract collectible wallet_0
+    import_contract collectible wallet_1
+    import_contract collectible wallet_2
     # initial balance checks
     check_balance wallet_0 2000 usdt
     check_balance wallet_0 2000 collectible
@@ -786,9 +812,13 @@ scenario_1() {
     get_issue_utxo wallet_0
     issue_contract wallet_0 usdt NIA $method
     issue_contract wallet_0 collectible CFA $method
-    # export/import NIA contract
+    # export/import contracts
     export_contract usdt wallet_0
     import_contract usdt wallet_1
+    import_contract usdt wallet_2
+    export_contract collectible wallet_0
+    import_contract collectible wallet_1
+    import_contract collectible wallet_2
     # initial balance checks
     check_balance wallet_0 2000 usdt
     check_balance wallet_0 2000 collectible
@@ -811,6 +841,113 @@ scenario_1() {
     check_balance wallet_0 1825 collectible
     check_balance wallet_1  125 collectible
     check_balance wallet_2   50 collectible
+}
+
+# rgb #124
+scenario_124() {
+    local method="opret1st"
+    # wallets
+    prepare_rgb_wallet wallet_0 $method
+    prepare_rgb_wallet wallet_1 $method
+    # asset issuance
+    get_issue_utxo wallet_0
+    issue_contract wallet_0 usdt NIA $method
+    # export/import contracts
+    export_contract usdt wallet_0
+    import_contract usdt wallet_1
+    # initial balance checks
+    check_balance wallet_0 2000 usdt
+
+    # generate a recipient UTXO before saving chain data
+    _gen_utxo wallet_1
+
+    # save current issuer + chain data
+    _tit "saving sender + chain data"
+    if [ "$PROFILE" = "esplora" ]; then
+        _subtit "stopping esplora services"
+        for SRV in socat electrs; do
+            docker compose exec esplora bash -c "sv -w 60 force-stop /etc/service/$SRV"
+        done
+    fi
+    docker compose --profile '*' down --remove-orphans -v
+    _subtit "saving current data"
+    if [ "$PROFILE" = "electrum" ]; then
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/datacore.1"
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataelectrs.1"
+    else
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataesplora.1"
+    fi
+    if [ "$PROFILE" = "electrum" ]; then
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "cp -a /data/datacore{,.1}"
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "cp -a /data/dataelectrs{,.1}"
+    else
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "cp -a /data/dataesplora{,.1}"
+    fi
+    _subtit "restarting services"
+    docker compose --profile $PROFILE up -d
+    echo -n "waiting for services to have started..."
+    if [ "$PROFILE" = "electrum" ]; then
+        until docker compose logs bitcoind |grep -q 'Bound to'; do
+            sleep 1
+        done
+    else
+        until docker compose logs esplora |grep -q 'Electrum RPC server running'; do
+            sleep 1
+        done
+    fi
+    echo " done"
+    "${BCLI[@]}" loadwallet miner   # load bitcoind wallet
+    _wait_indexers_sync
+
+    # transfer a 1st time
+    NO_GEN_UTXO=1  # already generated before saving chain state
+    transfer_assets wallet_0/wallet_1 2000/0     100 1900/100  0 0 usdt $method
+
+    # restore previous issuer data
+    _tit "restoring issuer + chain data"
+    if [ "$PROFILE" = "esplora" ]; then
+        _subtit "stopping esplora services"
+        for SRV in socat electrs; do
+            docker compose exec esplora bash -c "sv -w 60 force-stop /etc/service/$SRV"
+        done
+    fi
+    docker compose --profile '*' down --remove-orphans -v
+    _subtit "restoring previous data"
+    if [ "$PROFILE" = "electrum" ]; then
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/datacore"
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataelectrs"
+    else
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "rm -rf /data/dataesplora"
+    fi
+    if [ "$PROFILE" = "electrum" ]; then
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "mv /data/datacore{.1,}"
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "mv /data/dataelectrs{.1,}"
+    else
+        docker run --rm -v "$(pwd):/data" debian:bookworm bash -c "mv /data/dataesplora{.1,}"
+    fi
+    _subtit "restarting services"
+    docker compose --profile $PROFILE up -d
+    echo -n "waiting for services to have started..."
+    if [ "$PROFILE" = "electrum" ]; then
+        until docker compose logs bitcoind |grep -q 'Bound to'; do
+            sleep 1
+        done
+    else
+        until docker compose logs esplora |grep -q 'Electrum RPC server running'; do
+            sleep 1
+        done
+    fi
+    echo " done"
+    "${BCLI[@]}" loadwallet miner   # load bitcoind wallet
+    _wait_indexers_sync
+
+    # sync wallets
+    _sync_wallet wallet_0
+    _sync_wallet wallet_1
+
+    # make the same transfer a 2nd time, using the same invoice
+    # expected recipient initial balance is 100 as it sees the previous allocation
+    transfer_assets wallet_0/wallet_1 2000/100   100 1900/100  0 1 usdt $method
 }
 
 # run selected scenario
