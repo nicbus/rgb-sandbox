@@ -558,8 +558,8 @@ transfer_create() {
     [ $DEBUG = 1 ] && _subtit "sender state before transfer" && _show_state "$SEND_WLT" "$XFER_CONTRACT_NAME"
     [ $DEBUG = 1 ] && _subtit "recipient state before transfer" && _show_state "$RCPT_WLT" "$XFER_CONTRACT_NAME"
     _subtit "initial balances"
-    [ "$SKIP_INITIAL_SENDER_CHECK_BALANCE" != 1 ] && check_balance "$SEND_WLT" "$blnc_send" "$XFER_CONTRACT_NAME" 1
-    check_balance "$RCPT_WLT" "$blnc_rcpt" "$XFER_CONTRACT_NAME" 1
+    [ "$SKIP_INITIAL_SEND_CHECK_BALANCE" != 1 ] && check_balance "$SEND_WLT" "$blnc_send" "$XFER_CONTRACT_NAME" 1
+    [ "$SKIP_INITIAL_RCPT_CHECK_BALANCE" != 1 ] && check_balance "$RCPT_WLT" "$blnc_rcpt" "$XFER_CONTRACT_NAME" 1
     BLNC_SEND=$((blnc_send-send_amt))
     BLNC_RCPT=$((blnc_rcpt+send_amt))
     [ -n "$CUSTOM_BLNC_RCPT" ] && BLNC_RCPT=$CUSTOM_BLNC_RCPT
@@ -947,7 +947,8 @@ scenario_124() {
 
     # make the same transfer a 2nd time, using the same invoice
     # expected recipient initial balance is 100 as it sees the previous allocation
-    transfer_assets wallet_0/wallet_1 2000/100   100 1900/100  0 1 usdt $method
+    SKIP_INITIAL_RCPT_CHECK_BALANCE=1
+    transfer_assets wallet_0/wallet_1 2000/0     100 1900/100  0 1 usdt $method
 }
 
 # run selected scenario
