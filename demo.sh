@@ -501,7 +501,7 @@ prepare_rgb_wallet() {
 sign_and_broadcast() {
     local send_data="$1"
     _subtit "(sender) signing PSBT"
-    local signing tx txid
+    local signing tx
     _trace "${BTCHOT[@]}" sign -p '' "$send_data/$PSBT" \
         "$WALLET_PATH/$SEND_WLT.derive" >$TRACE_OUT
     signing="$(cat $TRACE_OUT)"
@@ -513,8 +513,8 @@ sign_and_broadcast() {
     tx="$(cat $TRACE_OUT)"
     _subtit "(sender) broadcasting tx"
     _trace "${BCLI[@]}" sendrawtransaction "$tx" >$TRACE_OUT
-    txid="$(cat $TRACE_OUT)"
-    _log "txid: $txid"
+    TXID="$(cat $TRACE_OUT)"
+    _log "txid: $TXID"
 }
 
 transfer_assets() {
@@ -903,6 +903,14 @@ scenario_124() {
     NO_GEN_UTXO=1  # already generated before saving chain state
     transfer_assets wallet_0/wallet_1 2000/0     100 1900/100  0 0 usdt $method
 
+    # check witness transaction
+    _subtit "looking for witness transaction ($TXID) in bitcoind before the restore"
+    if "${BCLI[@]}" getrawtransaction "$TXID" >/dev/null 2>&1; then
+        _log "transaction found"
+    else
+        _log "transaction NOT found"
+    fi
+
     # restore previous issuer data
     _tit "restoring issuer + chain data"
     if [ "$PROFILE" = "esplora" ]; then
@@ -941,13 +949,21 @@ scenario_124() {
     "${BCLI[@]}" loadwallet miner   # load bitcoind wallet
     _wait_indexers_sync
 
+    # check witness transaction
+    _subtit "looking for witness transaction ($TXID) in bitcoind after the restore"
+    if "${BCLI[@]}" getrawtransaction "$TXID" >/dev/null 2>&1; then
+        _log "transaction found"
+    else
+        _log "transaction NOT found"
+    fi
+
     # sync wallets
     _sync_wallet wallet_0
     _sync_wallet wallet_1
 
     # make the same transfer a 2nd time, using the same invoice
     # expected recipient initial balance is 100 as it sees the previous allocation
-    SKIP_INITIAL_RCPT_CHECK_BALANCE=1
+    #SKIP_INITIAL_RCPT_CHECK_BALANCE=1
     transfer_assets wallet_0/wallet_1 2000/0     100 1900/100  0 1 usdt $method
 }
 
