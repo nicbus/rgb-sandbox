@@ -748,7 +748,7 @@ set_aliases
 
 # install crates
 install_rust_crate "descriptor-wallet" "$DESCRIPTOR_WALLET_VER" "$DESCRIPTOR_WALLET_FEATURES" "--debug"
-install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --branch master" # 8a8b20e
+install_rust_crate "rgb-wallet" "$RGB_WALLET_VER" "$RGB_WALLET_FEATURES" "--git https://github.com/RGB-WG/rgb --branch mining" # bd10bdf
 
 # complete setup
 if [ -z "$SKIP_INIT" ]; then
